@@ -22,7 +22,9 @@ export class ScrollingContentDiv {
 
     async initialize() {
         try {
-            console.log('Attempting to fetch html from:', this.htmlFilePath);
+            if ( this.verbose ) {
+                console.log('Attempting to fetch html from:', this.htmlFilePath);
+            }
             const contentResonse = await fetch(this.htmlFilePath);
             if (!contentResonse.ok) {
                 throw new Error(`Failed to fetch HTML file: ${contentResonse.statusText}`);
@@ -34,7 +36,9 @@ export class ScrollingContentDiv {
             this.imageFilePath = bgImgPath;
             // this.imageFilePath = '/backgrounds/milky-way-blue-seamless-bordered.jpg';
             // Use the working URL path for image
-            console.log('Attempting to fetch image from:', this.imageFilePath);
+            if ( this.verbose ) {
+                console.log('Attempting to fetch image from:', this.imageFilePath);
+            }
             const imageResponse = await fetch(this.imageFilePath);
             if (!imageResponse.ok) {
                 throw new Error(`Failed to fetch IMG file: ${imageResponse.statusText}`);
@@ -156,9 +160,11 @@ export class ScrollingContentDiv {
                 }
 
                 // Update the background image's position based on the cumulative delta scrolls
-                cumulativeDeltaY += delta;
+                cumulativeDeltaY -= delta;
                 this.backgroundDiv.style.backgroundPosition = `0 ${cumulativeDeltaY * 0.1}px`;
-                console.log(`BackgroundDiv style.backgroundPosition set to: 0 ${cumulativeDeltaY * 0.1}px`);
+                if ( this.verbose ) {
+                    console.log(`BackgroundDiv style.backgroundPosition set to: 0 ${cumulativeDeltaY * 0.1}px`);
+                }
             }, { passive: false });
 
             window.addEventListener('resize', () => {
