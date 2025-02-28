@@ -57,6 +57,7 @@ export class ScrollingContentDiv {
             const objectURL = URL.createObjectURL(backgroundImg);
             backgroundDiv.style.backgroundImage = `url(${objectURL})`;
             backgroundDiv.style.backgroundRepeat = 'repeat';
+            backgroundDiv.style.backgroundSize = 'auto';
             backgroundDiv.style.backgroundPosition = `0 0 px`;
 
             document.body.append(backgroundDiv);

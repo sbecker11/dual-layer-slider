@@ -1,6 +1,6 @@
 import { ScrollingContentDiv } from './scrolling-content-div.mjs';
 
-export const bgImgPath = './backgrounds/sequoia-sunrise.png';
+export const bgImgPath = './backgrounds/sequoia-sunrise-small.png';
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
