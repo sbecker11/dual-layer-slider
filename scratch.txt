@@ -1,0 +1,35 @@
+
+given 
+BW height = 1500
+b0 height =  244
+b1 height =  610
+div0 to div5
+
+          top             btm
+div0/b0     0 .. + 244 =  244  
+div1/b1   244 .. + 610 =  854  div1/b1
+div2/b0   854 .. + 244 = 1098  div2/b0
+div3/b1  1098 .. + 610 = 1708  div3/b1
+div4/b0  1708 .. + 244 = 1952  div4/b0
+div5/b1  1952 .. + 610 = 2562  div5/b1 
+
+div5/b1 is now entirely out of browser window and 
+div5/b1 is the alternate of div0/b0 so 
+move div5/b1 be on top of div0/0 
+
+          top             btm
+div5/b1  -610 .. + 610 =    0
+
+
+
+                                                         top          btm
+Div 0 top:   0, bottom: 244, BI index: 0 good this is      0 + 244 =  244
+Div 1 top: 244, bottom: 488, BI index: 1 this should be  244 + 610 =  854
+Div 2 top: 488, bottom: 732, BI index: 0 this should be  854 + 244 = 1096
+Div 3 top: 116, bottom: 360, BI index: 1 this should be 1096 + 610 = 1708
+Div 4 top: 360, bottom: 604, BI index: 0 this should be 1708 + 244 = 1952
+Div 5 top: 604, bottom: 848, BI index: 1 this should be 1952 + 610 = 2562
+Div 6 top: 848, bottom: 1458, BI index: 0  
+Div 7 top: 1458, bottom: 2068, BI index: 1
+Div 8 top: 2068, bottom: 2678, BI index: 0
+
