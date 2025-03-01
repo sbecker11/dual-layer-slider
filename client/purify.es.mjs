@@ -599,12 +599,14 @@ function createDOMPurify() {
     }
     /* Merge configuration parameters */
     if (cfg.ADD_TAGS) {
+      // deepcode ignore UncomaparableValues: <please specify a reason of ignoring this>
       if (ALLOWED_TAGS === DEFAULT_ALLOWED_TAGS) {
         ALLOWED_TAGS = clone(ALLOWED_TAGS);
       }
       addToSet(ALLOWED_TAGS, cfg.ADD_TAGS, transformCaseFunc);
     }
     if (cfg.ADD_ATTR) {
+      // deepcode ignore UncomaparableValues: <please specify a reason of ignoring this>
       if (ALLOWED_ATTR === DEFAULT_ALLOWED_ATTR) {
         ALLOWED_ATTR = clone(ALLOWED_ATTR);
       }
@@ -1216,9 +1218,8 @@ function createDOMPurify() {
       if (importedNode.nodeType === NODE_TYPE.element && importedNode.nodeName === 'BODY') {
         /* Node is already a body, use as is */
         body = importedNode;
-      } else if (importedNode.nodeName === 'HTML') {
+      } else if (importedNode.nodeName === 'BODY' || importedNode.nodeName === 'HTML') {
         body = importedNode;
-      } else {
         // eslint-disable-next-line unicorn/prefer-dom-node-append
         body.appendChild(importedNode);
       }

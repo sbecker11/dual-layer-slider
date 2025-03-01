@@ -8,7 +8,6 @@ export class ScrollingContentDiv {
         return initializedInstance;
     }
 
-
     getSanitizedHtml(content) {
         // Use DOMPurify to sanitize the HTML content
         try {
@@ -31,13 +30,13 @@ export class ScrollingContentDiv {
         this.htmlContent = null; // the HTML content of the ScrollingContentDiv
         this.htmlContentDiv = null; // holds all html content
         this.backgroundImageUrls = backgroundImageUrls;
-        this.backgroundImgs = [];
+        this.backgroundImages = [];
         this.backgroundVtDivs = []; // Array to hold multiple background vtDivs
         this.backgroundHtmlDivs = []; // Array to hold multiple background htmlDivs
-        this.verbose = true; // Initialize verbose flag
+        this.padding = 50; // padding to allow scrolling above and below the content
+        this.contentScrollFactor = 2.0;
         this.backgroundScrollFactor = 0.1;
-        this.padding = 50;
-        this.scrollSpeed = 2.0;
+        this.verbose = true;
 
     }
 
@@ -57,7 +56,7 @@ export class ScrollingContentDiv {
             let imageIndex = vtDivIndex % numImages;
             let imageHeight = this.backgroundImageUrls[imageIndex].height;
             vtDivs.push({
-                index: vtDivIndex,
+                vtDivIndex: vtDivIndex,
                 imageIndex: imageIndex,
                 imageHeight: imageHeight,
                 imgUrl: this.backgroundImageUrls[imageIndex].url,
@@ -65,6 +64,7 @@ export class ScrollingContentDiv {
                 btm: top + imageHeight,
                 visible: true // will be set to false when the vtDiv is not visible
             });
+            console.log(`vtDivs[0].id: ${vtDivs[0].id}`);
             vtDivIndex += 1;
             top += imageHeight;
         }
@@ -125,15 +125,29 @@ export class ScrollingContentDiv {
     }
 
     transformHtmlDivs() {
+        let numVtDivs = this.backgroundVtDivs.length;
+        let numHtmlDivs = this.backgroundHtmlDivs.length;
+
+        if ( numVtDivs === 0 ) {
+            throw new Error('backgroundVtDivs is not initialized');
+        }
+        if ( numHtmlDivs === 0 ) {
+            throw new Error('backgroundHtmlDivs is not initialized');
+        }
+        if ( numVtDivs !== numHtmlDivs ) {
+            throw new Error(`numVtDivs:${numVtDivs}  !=  numHtmlDivs:{$numHtmlDivs}`);
+        }
         // This function uses the transformed vtDivs to update the
         // htmlDivs. It also hides the jump of any htmlDivs as they 
         // wrap around the top and bottom edges of the browser 
         // window. Thi is done by temporarily removing from htmlDiv, 
         // applying the new position, and then adding it back to DOM.
-        for ( let htmlDiv of this.backgroundHtmlDivs) {
-            let vtDiv = this.backgroundVtDivs[htmlDiv.index];
-
-            if ( !vtDiv.visible ) {
+        for ( let htmlDiv of this.backgroundHtmlDivs) { // html-div-0, html-div-1, ...
+            let vtDivIndex = parseInt(htmlDiv.id.split('-')[2]);
+            this.validate_vtDivIndex(vtDivIndex);
+            let vtDiv = this.backgroundVtDivs[vtDivIndex];
+        
+            if ( vtDiv.visible == false) {
                 // if marked invisible, prepare to hide the 
                 // jump by removing the htmlDiv from the DOM
                 document.body.removeChild(htmlDiv);
@@ -143,7 +157,7 @@ export class ScrollingContentDiv {
             htmlDiv.style.top = `${vtDiv.top}px`;
             htmlDiv.style.bottom = `${vtDiv.btm}px`;
 
-            if ( !vtDiv.visible ) {
+            if ( vtDiv.visible == false ) {
                 // if it was invisible then add the repositioned 
                 // htmlDiv back to the DOM
                 document.body.appendChild(htmlDiv);
@@ -153,24 +167,67 @@ export class ScrollingContentDiv {
         }
     }
 
+    validate_vtDivIndex(vtDivIndex) {
+        let numVtDivs = this.backgroundVtDivs.length;
+        if ( typeof vtDivIndex !== 'number' ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is not a number it is a ${typeof vtDivIndex}`);
+        }
+        if ( !Number.isNaN(vtDivIndex) ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is not a number it is  a ${typeof vtDivIndex}`);
+        }
+        if ( !Number.isInteger(vtDivIndex) ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is not an integer it is a ${typeof vtDivIndex}`);
+        }
+        if ( vtDivIndex === null ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is null`);
+        }
+        if ( vtDivIndex === undefined ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is undefined`);
+        }
+        if ( vtDivIndex < 0 ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is negative`);
+        }
+        if ( vtDivIndex >= numVtDivs ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is greater than or equal to numVtDivs`);
+        }
+        if ( vtDivIndex === Infinity ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is Infinity`);
+        }
+        if ( vtDivIndex === -Infinity ) {
+            throw new Error(`Invalid vtDivIndex: ${vtDivIndex} is -Infinity`);
+        }
+    }
+
     initializeBackgroundHtmlDivs() {
+        // this function is called after initializeBackgroundVtDivs
+        // which is called after the background images have been loaded
+        // and when the window is resized.
+
+        // this function using the backgroundVtDivs to creates the 
+        // actual background HTML divs. It also removes any
+        // old background HTML divs from the DOM and adds the
+        // new background HTML divs to the DOM.
+
+        // changes due to vertical scrolling are handled 
+        // first by transformVtDivs and then transformHtmlDivs
 
         // create the actual background HTML divs using this.backgroundVtDivs
         let backgroundHtmlDivs = [];
 
         for ( let backgroundVtDiv of this.backgroundVtDivs) {
-            let imageIndex = backgroundVtDiv.imageIndex;
-            let backgroundImageObjectUrl = this.backgroundImgs[imageIndex].objectUrl;
-            let imgHeight = backgroundVtDiv.imageHeight;
-
+            let vtDivIndex = backgroundVtDiv.vtDivIndex;
+            
+            // create the new backgroundHtmlDiv
+            let htmlDivId = `html-div-${vtDivIndex}`;
             const backgroundHtmlDiv = document.createElement('div');
-            backgroundHtmlDiv.id = backgroundVtDiv.index;
+            backgroundHtmlDiv.id = htmlDivId;
+            backgroundHtmlDiv.className = 'background-html-div';
             backgroundHtmlDiv.style.position = 'absolute';
             backgroundHtmlDiv.style.top = `${backgroundVtDiv.top}px`;
             backgroundHtmlDiv.style.bottom = `${backgroundVtDiv.btm}px`;
+            backgroundHtmlDiv.style.height = `${backgroundVtDiv.imageHeight}px`;
             backgroundHtmlDiv.style.left = '0';
             backgroundHtmlDiv.style.width = '100%';
-            backgroundHtmlDiv.style.height = `${backgroundVtDiv.imageHeight}px`;
 
             backgroundHtmlDiv.style.backgroundImage = `url(${backgroundVtDiv.imageUrl})`;
             backgroundHtmlDiv.style.backgroundRepeat = 'repeat';
@@ -180,20 +237,29 @@ export class ScrollingContentDiv {
             backgroundHtmlDiv.style.zIndex = '-1';
             backgroundHtmlDiv.style.pointerEvents = 'none';
 
+            // replace the old backgroundHtmlDiv with the new one if found
+            let oldDiv = document.getElementById(backgroundHtmlDiv.id);
+            if ( oldDiv ) {
+                document.body.removeChild(oldDiv);
+            }
             document.body.appendChild(backgroundHtmlDiv);
-
             backgroundHtmlDivs.push(backgroundHtmlDiv);
         }
 
         this.backgroundHtmlDivs = backgroundHtmlDivs;
-    }
+
+        let numVtDivs = this.backgroundVtDivs.length;
+        let numHtmDivs = this.backgroundHtmlDivs.length;
+        if ( numVtDivs !== numHtmDivs ) {
+            throw new Error(`numVtDivs:${numVtDivs}  !=  numHtmlDivs:{$numHtmlDivs}`);
+        }
+    } // backgroundHtmlDivs initialized based on current state of backgroundVtDivs
 
 
     async initialize() {
+        // this function is called only once
 
-        window.addEventListener('resize', (event) => handle_window_resize_event(event));
-
-        // load and sanitize the HTML content from this.htmlContentUrl
+        // load the HTML content from this.htmlContentUrl
         if (this.verbose) {
             console.log('Attempting to fetch html from:', this.htmlContentUrl);
         }
@@ -205,16 +271,14 @@ export class ScrollingContentDiv {
         if (!htmlContent) {
             throw new Error('Failed to fetch HTML content');
         }
+        this.htmlContent = htmlContent;
         if (this.verbose) {
             console.log('HTML content fetched successfully');
         }
-        this.sanitizedHtmlContent = this.getSanitizedHtml(htmlContent);
-        if (this.verbose) {
-            console.log('HTML content sanitized successfully');
-        }
 
-        // load all background images from this.imageFileUrls
-        this.backgroundImgs = []
+        // load all this.backgroundImages from this.imageFileUrls
+        this.backgroundImages = []
+
         for ( let backgroundImageUrl of this.backgroundImageUrls) {
             let backgroundImageBlob = null;
             let backgroundImageHeight = null;
@@ -241,79 +305,78 @@ export class ScrollingContentDiv {
                 if (this.verbose) {
                     console.log('Background image height fetched successfully');
                 }
-                // create an object URL for the image
-                let backgroundObjectUrl = URL.createObjectURL(backgroundImageBlob);
-                this.backgroundImgs.push({
+                this.backgroundImages.push({
                     url: backgroundImageUrl,
                     blob: backgroundImageBlob,
-                    objectUrl: backgroundObjectUrl,
+                    objectUrl: URL.createObjectURL(backgroundImageBlob),
                     height: backgroundImageHeight
                 });
                 if (this.verbose) {
-                    console.log(`Image blob and height of backgroundImg[{this.backgroundImgs.length-1}] fetched successfully`);
+                    console.log(`Image blob and height of backgroundImg[{this.backgroundImages.length-1}] fetched successfully`);
                 }
             }
             catch (error) {
-                console.error('Error fetching background image:', error);
+                console.error(`Error fetching backgroundImageUrl: ${backgroundImageUrl} : `, error);
                 throw error;
             }
-        
-            this.backgroundImgs.push({
-                url: backgroundImageUrl,
-                blob: backgroundImageBlob,
-                objectUrl: backgroundObjectUrl,
-                height: backgroundImageHeight
-            });
-            if (this.verbose) {
-                console.log(`Image blob and height of backgroundImg[{this.backgroundImgs.length-1}] fetched successfully`);
-            }
-        } // all this.backgroundImgs loaded and initialized
+    
+        } // all this.backgroundImages loaded and initialized
 
-        // Create and set up this.backgroundVtDivs using this.backgroundImgs
+        // The first call to create and set up this.backgroundVtDivs using this.backgroundImages
         this.initializeBackgroundVtDivs();
 
-        // create and set up this.backgroundHtmlDivs using this.backgroundVtDivs
+        // The first call to create and set up this.backgroundHtmlDivs using this.backgroundVtDivs
         this.initializeBackgroundHtmlDivs();
 
-        // create the wrapperDiv which will be 
+        // create the new wrapperDiv which will be 
         // the parent of the htmlContentDiv
-        let wrapperDiv = document.getElementById("wrapper-div");
-        if ( !wrapperDiv ) {
-            wrapperDiv = document.createElement('div');
-            wrapperDiv.id = 'wrapper-div';
-            document.body.appendChild(wrapperDiv);
+        this.wrapperDiv = document.createElement('div');
+        this.wrapperDiv.id = 'wrapper-div';
+        this.wrapperDiv.addEventListener('wheel', (event) => this.handle_wrapper_scroll_event(event), { passive: false });
 
-            wrapperDiv.addEventListener('wheel', (event) => handle_wrapper_scroll_event(event), { passive: false });
+        // create the new htmlContentDiv holding the htmlContent
+        // this will be affected by the wrapperDiv's scroll event
+        // this will be affected by the window's resize event
+        this.htmlContentDiv = document.createElement('div')
+        this.htmlContentDiv.id = 'html-content-div';
+
+        let sanitizedHtmlContent = this.sanitizeHtmlContent(this.htmlContent);
+        if ( sanitizedHtmlContent.length === 0 ) {
+            throw new Error('Failed to sanitize HTML content');
         }
+        this.htmlContentDiv.innerHTML = sanitizedHtmlContent
+// deepcode ignore DOMXSS: because it's been sanitized using DOMPurify
 
-        // create the htmlContentDiv which will be
-        // the parent of the htmlContent
-        let htmlContentDiv = document.getElementById("html-content-div");
-        if ( !htmlContentDiv ) {
-            htmlContentDiv =  document.createElement('div');
-            htmlContentDiv.id = 'html-content-div';
-            wrapperDiv.appendChild(htmlContentDiv);
-        }
-        htmlContentDiv.innerHTML = this.sanitizedHtmlContent;
-        this.htmlContentDiv = htmlContentDiv;
+        this.wrapperDiv.appendChild(this.htmlContentDiv);
 
-        document.body.appendChild(wrapperDiv);
-        wrapperDiv.appendChild(htmlContentDiv);
+        document.body.appendChild(this.wrapperDiv);
+
+        window.addEventListener('resize', (event) => this.handle_window_resize_event(event));
+
     
-}
+    } // end of initialize
 
-    updateBoundaries() {
-        const contentHeight = htmlContentDiv.getBoundingClientRect().height;
+    getCurrentBounderies() {
+        if ( this.htmlContentDiv === null ) {
+            throw new Error('this.htmlContentDiv is null');
+        }
+        // this function is called when the window is resized
+        // it updates the boundaries used by the htmlContentDiv
+        const contentHeight = this.htmlContentDiv.getBoundingClientRect().height;
+        // allow scrolling above the top edge and the bottom edge of the window by newHeight
+        const newHeight = (contentHeight + this.padding) * 2;
         return {
-            minScroll: -(contentHeight * 2) - this.padding, // Allow scrolling beyond the content height with this.padding
-            maxScroll: contentHeight * 2 + this.padding // Allow scrolling beyond the content height with this.padding
+            minScroll: -newHeight, 
+            maxScroll: newHeight
         };
     }
 
     handle_window_resize_event(event) {
-        const boundaries = this.updateBoundaries();
+        let currentTranslateY = 0;
+        let lastTranslateY = 0;
+        const boundaries = this.getCurrentBounderies();
         currentTranslateY = Math.min(boundaries.maxScroll,
-            Math.max(boundaries.minScroll, currentTranslateY));
+            this.htmlContentDiv.style.transform = `translateY(${currentTranslateY}px)`);
         if (currentTranslateY !== lastTranslateY) {
             htmlContentDiv.style.transform = `translateY(${currentTranslateY}px)`;
             lastTranslateY = currentTranslateY;
@@ -327,20 +390,20 @@ export class ScrollingContentDiv {
 
         let currentTranslateY = 0;
         let lastTranslateY = 0;
-        let cumulativeDeltaY = 0; // Variable to track the cumulative delta scrolls for the background image
 
-        const boundaries = this.updateBoundaries();
-        const delta = event.deltaY * this.scrollSpeed;
+        const contentDelta = event.deltaY * this.contentScrollFactor;
+
+        // get the contentDelta for the backgroundVtDivs
+        const backgroundDelta = event.deltaY * this.backgroundScrollFactor;
 
         // translate the backgroundHtmlDivs
-        const backgroundDelta = delta * this.backgroundScrollFactor;
         this.transformVtDivs(backgroundDelta);
 
-        // to update this.backgroundHtmlDivs
+        // then update this.backgroundHtmlDivs
         this.transformHtmlDivs();
 
         // translate the htmlContentDiv
-        let newTranslateY = currentTranslateY - delta;
+        let newTranslateY = currentTranslateY - contentDelta;
         
         if (this.verbose) {
             console.log("newTranslateY:", newTranslateY);
@@ -355,34 +418,66 @@ export class ScrollingContentDiv {
             });
         }
 
+        // clamp the newTranslateY to the boundaries (not sure if this is neede)
+        const boundaries = this.getCurrentBounderies();
         newTranslateY = Math.min(boundaries.maxScroll, Math.max(boundaries.minScroll, newTranslateY));
         
         if (newTranslateY !== lastTranslateY) {
-            const contentRect = htmlContentDiv.getBoundingClientRect();
+            const contentRect = this. htmlContentDiv.getBoundingClientRect();
             
             if (contentRect.bottom < -this.padding || contentRect.top < -contentRect.height - this.padding) {
-                this.wrapperDiv.removeChild(htmlContentDiv); // Temporarily remove the htmlContentDiv from the DOM
+                // compute the new translation after going over the top edge of the window
                 newTranslateY = window.innerHeight + this.padding;
             } else if (contentRect.top > window.innerHeight + this.padding) {
-                wrapperDiv.removeChild(htmlContentDiv); // Temporarily remove the htmlContentDiv from the DOM
+                // compute the new tranlation after going over the bottom edge of the window
                 newTranslateY = -contentRect.height - this.padding;
             }
+            // Temporarily remove the htmlContentDiv from the DOM
+            this.wrapperDiv.removeChild(this.htmlContentDiv);
 
+            // Apply the new translation
+            this.htmlContentDiv.style.transition = 'transform 0.3s ease-out';
+            this.htmlContentDiv.style.transition = 'none';
             this.htmlContentDiv.style.transform = `translateY(${newTranslateY}px)`;
+
+            // Re-append the htmlContentDiv to the DOM
+            this.wrapperDiv.appendChild(this.htmlContentDiv); 
+
+            // update the state of the scrolling
             currentTranslateY = newTranslateY;
             lastTranslateY = newTranslateY;
-            wrapperDiv.appendChild(htmlContentDiv); // Re-append the htmlContentDiv to the DOM
+
+        } // end of if (newTranslateY !== lastTranslateY)
+    } // end of handle_wrapper_scroll_event
+
+    async getImageHeight(imageBlob) {
+        // this function returns the height of the image 
+        // given the imageBlob after it has been loaded
+        return new Promise((resolve, reject) => {
+            // create a temp_image to get the height
+            const temp_image = new Image();
+            // define the onload handler
+            temp_image.onload = () => {
+                resolve(temp_image.height);
+            };
+            // defin the on error handler
+            temp_image.onerror = reject;
+
+            // this will be called after the onload
+            temp_image.src = URL.createObjectURL(imageBlob);
+        });
+    } // end of getImageHeight
+
+    sanitizeHtmlContent(htmlContent) { 
+        // this function sanitizes the given htmlContent using DOMPurify
+        // and returns the sanitized HTML content
+        try {
+            const sanitizedContent = DOMPurify.sanitize(htmlContent);
+            return sanitizedContent;
+        } catch (error) {
+            console.error('Error sanitizing HTML content:', error);
+            return '';
         }
     }
 
-    async getImageHeight(imageBlob) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-                resolve(img.height);
-            };
-            img.onerror = reject;
-            img.src = URL.createObjectURL(imageBlob);
-        });
-    }
-}
+} // end of ScrollingContentDiv class
