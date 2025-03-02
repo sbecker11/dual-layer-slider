@@ -1,5 +1,5 @@
 :root {
-  --bg-color: #e5e5e5;
+  --bg-color: transparent;
   --bcn-orange: #f16a2d;
   --bcn-orange-light: #f9ae56;
   --bcn-orange-dark: #d96129;
@@ -24,7 +24,7 @@ html, body {
   overflow: hidden;
   height: 100vh;
   width: 100vw;
-  background-color: transparent;
+  background-color: transparent !important;
 }
 
 .admin {
@@ -134,7 +134,7 @@ svg.viewBox {
   right: 0;
   bottom: 0;
   overflow: hidden;
-  background-color: transparent;
+  background-color: transparent !important;
 }
 
 #html-content-div {
@@ -147,5 +147,5 @@ svg.viewBox {
   padding: 0px;
   box-sizing: border-box;
   transition: transform 0.2s cubic-bezier(0.33, 1, 0.68, 1);
-  background-color: transparent;
+  background-color: transparent !imporant;
 }

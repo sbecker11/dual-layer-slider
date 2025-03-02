@@ -30,6 +30,13 @@ app.get('/', (_, res) => {
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
 
+// // Serve the undefined request
+app.get('*', (req, res) => {
+    console.log("404 - Not Found:", req.originalUrl);
+    res.status(404).send('Not Found');
+});
+
+// start the server
 app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);
 });
