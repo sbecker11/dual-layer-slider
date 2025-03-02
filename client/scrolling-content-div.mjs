@@ -11,11 +11,12 @@ export class ScrollingContentDiv {
     constructor(htmlContentUrl, backgroundImageUrls) {
         this.htmlContentUrl = this.validate_url_string(htmlContentUrl);
         this.backgroundImageUrls = this.validate_list_of_url_strings(backgroundImageUrls);
+        this.backgroundImageObjects = [];
         this.htmlContent = null; // the HTML content of the ScrollingContentDiv
         this.htmlContentDiv = null; // holds all html content
         this.wrapperDiv = null; // the wrapper div holding the htmlContentDiv
         this.imageSlots = []; // Array to hold the imageSlots used to position the background images
-        this.backgroundImages = []; // the array of realized background images
+        this.backgroundImageObjects = []; // the array of realized background images
         this.backgroundHtmlDivs = []; // Array to hold multiple background htmlDivs
         this.contentScrollFactor = 2.0;
         this.backgroundScrollFactor = 0.1;
@@ -24,7 +25,7 @@ export class ScrollingContentDiv {
         this.last_delta = 0;
     }
 
-    initializeImageSlots() {
+    async initializeImageSlots() {
         // Picture an infinite stack of alternating images with different heights.
         // Also picture viewing a portion of the stack through a browser window.
         // This function creates the small(est) stack of alternating images that can be
@@ -35,13 +36,22 @@ export class ScrollingContentDiv {
         // alternating background images over the current window.innerHeight.
         let top = 0;
         let slotIndex = 0;
-        let imageSlots = [];
-        const numImages = this.backgroundImageUrls.length;
-        while ( top < window.innerHeight * 2) {
+        this.imageSlots = [];
+
+        const numImages = this.backgroundImageObjects.length;
+        if ( numImages === 0 ) {
+            throw new Error('numImages is 0');
+        }
+        console.log("numImages:", numImages);
+        const windowHeight = window.innerHeight;
+        console.log("windowHeight:", windowHeight);
+        
+        while ( top < (windowHeight * 2)) {
             let imageIndex = slotIndex % numImages;
-            let imageHeight = this.backgroundImageUrls[imageIndex].height;
-            let imageUrl = this.validate_url_string(this.backgroundImageUrls[imageIndex]);
-            imageSlots.push({
+            let backgroundImageObject = this.backgroundImageObjects[imageIndex];
+            let imageHeight = backgroundImageObject.height;
+            let imageUrl = backgroundImageObject.url;
+            this.imageSlots.push({
                 slotIndex: slotIndex,
                 imageIndex: imageIndex,
                 imageHeight: imageHeight,
@@ -50,11 +60,16 @@ export class ScrollingContentDiv {
                 btm: top + imageHeight,
                 visible: true // will be set to false when the imgSlot is not visible
             });
+            console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top);
             slotIndex += 1;
             top += imageHeight;
+            console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top);
         }
         // initialize this.imageSlots 
-        this.imageSlots = imageSlots;
+        let numImgSlots = this.imageSlots.length;
+        if ( numImgSlots < 2 ) {
+            throw new Error('numImgSlots is too small: ' + numImgSlots);
+        }
 
         // transform all this.imageSlots to wrap around the top and bottom 
         // edges of the browser window given the deltaY of 0
@@ -81,6 +96,12 @@ export class ScrollingContentDiv {
         // create the actual background HTML divs using this.imageSlots
         let backgroundHtmlDivs = [];
 
+        let numImgSlots = this.imageSlots.length;
+        if ( numImgSlots < 2  ) {
+            throw new Error('imageSlots is too small: ' + numImgSlots);
+        }
+
+
         for ( let imageSlot of this.imageSlots) {
             
             // create the new backgroundHtmlDiv
@@ -93,12 +114,12 @@ export class ScrollingContentDiv {
             backgroundHtmlDiv.style.height = imageSlot.imageHeight + 'px';
             backgroundHtmlDiv.style.left = 0;
             backgroundHtmlDiv.style.width = '100%';
-            backgroundHtmlDiv.style.backgroundImage = imageSlot.imageUrl;
+            backgroundHtmlDiv.style.backgroundImage = `url(${imageSlot.imageUrl})`; 
             backgroundHtmlDiv.style.backgroundRepeat = 'repeat';
             backgroundHtmlDiv.style.backgroundSize = 'auto';
             backgroundHtmlDiv.style.backgroundPosition = '0 0';
             backgroundHtmlDiv.style.backgroundColor = 'transparent';
-            backgroundHtmlDiv.style.zIndex = '-1';
+            backgroundHtmlDiv.style.zIndex = -1;
             backgroundHtmlDiv.style.pointerEvents = 'none';
 
             // replace the old backgroundHtmlDiv with the new one if found
@@ -112,13 +133,15 @@ export class ScrollingContentDiv {
 
         this.backgroundHtmlDivs = backgroundHtmlDivs;
 
-        let numImgSlots = this.imageSlots.length;
         let numHtmDivs = this.backgroundHtmlDivs.length;
+        if ( numHtmDivs === 0 ) {
+            throw new Error('backgroundHtmlDivs is not initialized');
+        }
         if ( numImgSlots !== numHtmDivs ) {
             throw new Error(`Mismatch between image slots and HTML divs: numImgSlots:${numImgSlots} != numHtmlDivs:${numHtmlDivs}. Image slots: ${JSON.stringify(this.imageSlots)}, HTML divs: ${JSON.stringify(this.backgroundHtmlDivs)}`);
         }
 
-        this.validate_lists();
+        this.validate_lists(123);
 
     } // backgroundHtmlDivs initialized based on current state of imageSlots
 
@@ -187,7 +210,7 @@ export class ScrollingContentDiv {
         // window. This is done by temporarily removing from htmlDiv, 
         // applying the new position, and then adding it back to DOM.
 
-        this.validate_lists();
+        this.validate_lists(194);
 
         for ( let imgSlot of this.imageSlots) {
             let htmlDiv = this.backgroundHtmlDivs[imgSlot.slotIndex];
@@ -247,8 +270,8 @@ export class ScrollingContentDiv {
             console.log('HTML content fetched successfully');
         }
 
-        // load all this.backgroundImages from this.imageFileUrls
-        this.backgroundImages = []
+        // load all this.backgroundImageObjects from this.imageFileUrls
+        this.backgroundImageObjects = []
 
         for ( let backgroundImageUrl of this.backgroundImageUrls) {
             let imageUrl = this.validate_url_string(backgroundImageUrl);
@@ -279,7 +302,7 @@ export class ScrollingContentDiv {
                     console.log('Background image imageDimensions fetched successfully');
                 }
 
-                this.backgroundImages.push({
+                this.backgroundImageObjects.push({
                     url: imageUrl,
                     height: imageDimensions.height
                 });
@@ -288,16 +311,12 @@ export class ScrollingContentDiv {
                 console.error(`Error fetching backgroundImageUrl: ${backgroundImageUrl} : `, error);
                 throw error;
             }
-    
-        } // all this.backgroundImages loaded and initialized
-
-        for ( let backgroundImage of this.backgroundImages) {
-            if (this.verbose) {
-                console.log('Background image:', backgroundImage);
-            }
+        } // all this.backgroundImageObjects loaded and initialized
+        for ( let backgroundImageObject of this.backgroundImageObjects) {
+            console.log('**** backgroundImageObject:', backgroundImageObject);
         }
 
-        // The first call to create and set up this.imageSlots using this.backgroundImages
+        // The first call to create and set up this.imageSlots using this.backgroundImageObjects
         this.initializeImageSlots();
 
         // The first call to create and set up this.backgroundHtmlDivs using this.imageSlots
@@ -348,91 +367,89 @@ export class ScrollingContentDiv {
     //     };
     // }
 
-
     handle_wrapper_scroll_event(event) {
         event.preventDefault();
-
-        this.current_velocity += event.deltaY * 15.0;
-
+    
+        // Update the current velocity based on the scroll event
+        this.current_velocity += event.deltaY * 0.1; // Smaller step for velocity updates
+    
         const bounding_client_rect = this.htmlContentDiv.getBoundingClientRect();
         const content_height = bounding_client_rect.height;
         const padding = content_height / 2;
-
-        // clamp the velocity
-        const max_velocity = content_height;
+        const parent = this.htmlContentDiv.parentNode;
+        if (parent !== this.wrapperDiv) {
+            throw new Error('htmlContentDiv is not a child of wrapperDiv');
+        }
+    
+        // Clamp the velocity
+        const max_velocity = content_height / 10;
         const min_velocity = -max_velocity;
         this.current_velocity = Math.max(min_velocity, Math.min(max_velocity, this.current_velocity));
-        
+    
         // Dampen the velocity over time
-        const damping_factor = 0.5;
+        const damping_factor = 0.95; // Higher damping factor for smoother scrolling
         this.current_velocity *= damping_factor;
-
-        // if the scroll is too small, ignore it
-        if (Math.abs(this.current_velocity) < 0.1) {
+    
+        // If the scroll is too small, ignore it
+        if (Math.abs(this.current_velocity) < 0.01) {
+            this.current_velocity = 0;
             return;
         }
 
+        this.transformImgSlots(this.current_velocity/10);
+        this.transformHtmlDivs();
+    
         const new_delta = this.current_velocity;
-
+    
         if (this.verbose) {
             let info = [];
             info.push(`crt_veloc: ${this.current_velocity.toFixed(3)}`);
             info.push(`new_delta: ${new_delta.toFixed(3)}`);
+            info.push(`max_veloc: ${max_velocity.toFixed(3)}`);
+            info.push(`evt.delta: ${event.deltaY.toFixed(3)}`);
             console.log(info.join('\n'));
         }
-        
-        // const backgroundDeltaY = this.current_velocity / 5.0
-        // // translate the backgroundHtmlDivs
-        // this.transformImgSlots(backgroundDeltaY);
-        // this.transformHtmlDivs();
-
-        const parent = this.htmlContentDiv.parentNode;
-        if ( parent !== this.wrapperDiv ) {
-            throw new Error('htmlContentDiv is not a child of wrapperDiv');
-        }
-
-        const current_top = bounding_client_rect.top;
-        const window_height = window.innerHeight;
-
-        // pre translate the htmlContentDiv
-        let new_top = current_top + new_delta;
-        let new_btm = new_top + content_height;
-
-        // new top has gone past the bottom edge so instntaneously go to the top
-        if ( new_top > window_height + padding) {
-            parent.removeChild(this.htmlContentDiv);
-            new_top =  -content_height;
-            this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
-            parent.appendChild(this.htmlContentDiv); 
-        } 
-        // new btm has gone past the top edge so intantaneously go to the button
-        else if ( new_btm < -padding) {
-            parent.removeChild(this.htmlContentDiv);
-            new_top = window_height;
-            this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
-            parent.appendChild(this.htmlContentDiv); 
-        } 
-        else {
-            // apply the transform with smoothed transition
-            this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
-            const delay = 0;
-            const distance = Math.abs(new_delta);
-            const duration = distance / 500; // assuming 500 pixels per second
-            this.htmlContentDiv.style.transition = `transform ${duration}s ease-out ${delay}s`;
-        }
-        
-        // if (this.verbose) {
-        //     let info = [];
-        //     info.push('handle_wrapper_scroll_event:');
-        //     info.push('new_delta:', Math.round(new_delta));
-        //     info.push('new_top:', Math.round(new_top));
-        //     info.push('new_btm:', Math.round(new_btm));
-        //     info.push('innerHeight:', Math.round(window.innerHeight));
-        //     info.push(`is_a_jump: ${is_a_jump}`);
-        //     console.log( info.join('\n'));
-        // }
-        
-   
+    
+        // Use requestAnimationFrame for smoother updates
+        const updatePosition = () => {
+            const current_top = bounding_client_rect.top;
+            const window_height = window.innerHeight;
+    
+            // Pre-translate the htmlContentDiv
+            let new_top = current_top + new_delta;
+            let new_btm = new_top + content_height;
+    
+            // New top has gone past the bottom edge, so instantaneously go to the top
+            if (new_top > window_height + padding) {
+                parent.removeChild(this.htmlContentDiv);
+                new_top = -content_height;
+                this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
+                parent.appendChild(this.htmlContentDiv);
+            }
+            // New bottom has gone past the top edge, so instantaneously go to the bottom
+            else if (new_btm < -padding) {
+                parent.removeChild(this.htmlContentDiv);
+                new_top = window_height;
+                this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
+                parent.appendChild(this.htmlContentDiv);
+            }
+            else {
+                // Apply the transform with smoothed transition
+                this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
+                const initial_delay = 0;
+                const distance = Math.abs(new_delta);
+                const duration = distance / 1000; // Assuming 1000 pixels per second
+                this.htmlContentDiv.style.transition = `transform ${duration}s ease-out ${initial_delay}s`;
+            }
+    
+            // Continue updating the position if the velocity is still significant
+            if (Math.abs(this.current_velocity) >= 0.01) {
+                requestAnimationFrame(updatePosition);
+            }
+        };
+    
+        // Start the position update
+        requestAnimationFrame(updatePosition);
     } // end of handle_wrapper_scroll_event
 
     // Function to get image dimension from a URL string
@@ -440,7 +457,7 @@ export class ScrollingContentDiv {
     // const url = 'https://example.com/image.jpg';
     // const dimensions = await this.etImageDimensions(url);
     // const dimensions = await this.getImageDimensions(url);
-    getImageDimensions(url) {
+    async getImageDimensions(url) {
         const imageUrl = this.validate_url_string(url);
         return new Promise((resolve, reject) => {
         const temp_image_element = new Image();
@@ -509,19 +526,20 @@ export class ScrollingContentDiv {
         return url_strings;
     }
 
-    validate_lists() {
+    validate_lists(line_number) {
         let numImgSlots = this.imageSlots.length;
         let numHtmlDivs = this.backgroundHtmlDivs.length;
 
         if ( numImgSlots === 0 ) {
-            throw new Error('imageSlots is not initialized');
+            throw new Error('imageSlots is not initialized at line_number:' + line_number);
         }
         if ( numHtmlDivs === 0 ) {
-            throw new Error('backgroundHtmlDivs is not initialized');
+            throw new Error('backgroundHtmlDivs is not initialized at line_number:' + line_number);
         }
         if ( numImgSlots !== numHtmlDivs ) {
-            throw  new Error(`Mismatch between image slots and HTML divs: numImgSlots:${numImgSlots} != numHtmlDivs:${numHtmlDivs}. Image slots: ${JSON.stringify(this.imageSlots)}, HTML divs: ${JSON.stringify(this.backgroundHtmlDivs)}`);
+            throw  new Error(`Mismatch between image slots and HTML divs: numImgSlots:${numImgSlots} != numHtmlDivs:${numHtmlDivs}. Image slots: ${JSON.stringify(this.imageSlots)}, HTML divs: ${JSON.stringify(this.backgroundHtmlDivs)} at line_number: ${line_number}`);
         }
+        console.log(`imageSlots: ${numImgSlots} htmlDivs: ${numHtmlDivs} at line_number: ${line_number}`);
     }
 
 
