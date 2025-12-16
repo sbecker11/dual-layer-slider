@@ -1,17 +1,18 @@
 import DOMPurify from './purify.es.mjs';
 
 export class ScrollingContentDiv {
-    static async create(htmlContentUrl, backgroundImageUrls) {
-        const instance = new ScrollingContentDiv(htmlContentUrl, backgroundImageUrls);
+    static async create(htmlContentUrl, backgroundImageUrls, isSingleWindow = false) {
+        const instance = new ScrollingContentDiv(htmlContentUrl, backgroundImageUrls, isSingleWindow);
         await instance.initialize();
         // this is added to the DOM from index.html
         return instance;
     }
 
-    constructor(htmlContentUrl, backgroundImageUrls) {
+    constructor(htmlContentUrl, backgroundImageUrls, isSingleWindow = false) {
         this.htmlContentUrl = this.validate_url_string(htmlContentUrl);
         this.backgroundImageUrls = this.validate_list_of_url_strings(backgroundImageUrls);
         this.backgroundImageObjects = [];
+        this.isSingleWindow = isSingleWindow; // Track if this is the only browser window
         this.htmlContent = null; // the HTML content of the ScrollingContentDiv
         this.htmlContentDiv = null; // holds all html content
         this.wrapperDiv = null; // the wrapper div holding the htmlContentDiv
@@ -39,6 +40,18 @@ export class ScrollingContentDiv {
         this.velocity_damping_rate = 0.9; // Damping factor to slow down velocity when mouse is at center
         this.last_frame_time = null; // Track time for per-second calculations
         this.frame_count = 0; // Frame counter for logging
+        
+        // Mouse drag state for drag-to-scroll functionality
+        this.is_dragging = false; // Whether user is currently dragging
+        this.drag_start_mouse_y = null; // Mouse Y position when drag started
+        this.drag_start_translate_y = null; // translateY value when drag started
+        this.drag_target_element = null; // The element being dragged (image-container or image-card)
+        
+        // Mouse drag state for drag-to-scroll functionality
+        this.is_dragging = false; // Whether user is currently dragging
+        this.drag_start_mouse_y = null; // Mouse Y position when drag started
+        this.drag_start_translate_y = null; // translateY value when drag started
+        this.drag_target_element = null; // The element being dragged (image-container or image-card)
     }
 
     async initializeImageSlots() {
@@ -428,7 +441,18 @@ export class ScrollingContentDiv {
         this.htmlContentDiv = document.createElement('div');
         this.htmlContentDiv.id = 'html-content-div';
 
-        let sanitized_html_content = this.getSanitizedHtmlContent(this.htmlContent);
+        // Fix port mismatches BEFORE sanitization (server should do this, but client-side backup)
+        const currentPort = window.location.port || '3000';
+        let htmlContentToSanitize = this.htmlContent;
+        const portMismatchesBefore = (htmlContentToSanitize.match(/http:\/\/localhost:3000/g) || []).length;
+        if (portMismatchesBefore > 0 && currentPort !== '3000') {
+            console.warn(`[Init] Found ${portMismatchesBefore} image URLs with hardcoded port 3000, but server is on port ${currentPort}`);
+            console.warn(`[Init] Fixing port mismatches client-side before sanitization...`);
+            htmlContentToSanitize = htmlContentToSanitize.replace(/http:\/\/localhost:3000/g, `http://localhost:${currentPort}`);
+            console.log(`[Init] Fixed ${portMismatchesBefore} port mismatches`);
+        }
+        
+        let sanitized_html_content = this.getSanitizedHtmlContent(htmlContentToSanitize);
         if ( sanitized_html_content.length === 0 ) {
             throw new Error('Failed to sanitize HTML content');
         }
@@ -436,6 +460,13 @@ export class ScrollingContentDiv {
         // Debug: Check image count in sanitized content before duplication
         const imgCountBeforeDup = (sanitized_html_content.match(/<img/g) || []).length;
         console.log(`[Init] Sanitized content has ${imgCountBeforeDup} img tags before duplication`);
+        
+        // Double-check for port mismatches after sanitization
+        const portMismatchesAfter = (sanitized_html_content.match(/http:\/\/localhost:3000/g) || []).length;
+        if (portMismatchesAfter > 0 && currentPort !== '3000') {
+            console.warn(`[Init] WARNING: ${portMismatchesAfter} port mismatches still present after sanitization, fixing again...`);
+            sanitized_html_content = sanitized_html_content.replace(/http:\/\/localhost:3000/g, `http://localhost:${currentPort}`);
+        }
         
         // Create continuous loop by duplicating content multiple times
         // We'll create 3 copies: original, copy above, copy below for seamless looping
@@ -447,42 +478,102 @@ export class ScrollingContentDiv {
         const imgElementsImmediate = this.htmlContentDiv.querySelectorAll('img');
         console.log(`[Init] Found ${imgElementsImmediate.length} img elements in DOM immediately after insertion (expected: ${imgCountBeforeDup * 3})`);
         
+        // Immediately check image src attributes
+        imgElementsImmediate.forEach((img, idx) => {
+            const src = img.src || img.getAttribute('src') || '';
+            if (!src || src === '') {
+                console.error(`[Init] Image ${idx} has NO src attribute!`);
+            } else {
+                const imgPort = new URL(src, window.location.href).port || '3000';
+                if (imgPort !== currentPort && imgPort !== '3000') {
+                    console.warn(`[Init] Image ${idx} port mismatch: src port=${imgPort}, current port=${currentPort}`);
+                }
+            }
+        });
+        
+        // Immediately force all images to load
+        imgElementsImmediate.forEach((img, idx) => {
+            // Set up error handlers immediately
+            img.onerror = () => {
+                console.error(`[Init] Image ${idx} FAILED TO LOAD: ${img.src}`);
+                console.error(`[Init] Image error details:`, {
+                    src: img.src,
+                    complete: img.complete,
+                    naturalWidth: img.naturalWidth,
+                    naturalHeight: img.naturalHeight
+                });
+            };
+            img.onload = () => {
+                console.log(`[Init] Image ${idx} LOADED: ${img.naturalWidth}x${img.naturalHeight} from ${img.src.substring(0, 60)}...`);
+            };
+            
+            // Force load by setting src again, and fix port if needed
+            if (img.src) {
+                const originalSrc = img.src;
+                const currentPort = window.location.port || '3000';
+                
+                // Check if src URL has port mismatch and fix it
+                try {
+                    const url = new URL(originalSrc, window.location.href);
+                    if (url.port === '3000' && currentPort !== '3000') {
+                        url.port = currentPort;
+                        console.warn(`[Init] Image ${idx} port mismatch, fixing: ${originalSrc.substring(0, 60)}... -> ${url.href.substring(0, 60)}...`);
+                        img.src = url.href;
+                    } else {
+                        img.src = '';
+                        img.src = originalSrc;
+                    }
+                } catch (e) {
+                    console.error(`[Init] Image ${idx} has invalid URL: ${originalSrc}`, e);
+                    img.src = '';
+                    img.src = originalSrc;
+                }
+            } else {
+                console.error(`[Init] Image ${idx} has no src attribute!`);
+            }
+        });
+        
         setTimeout(() => {
             const imgElements = this.htmlContentDiv.querySelectorAll('img');
-            console.log(`[Init] Found ${imgElements.length} img elements in DOM after 100ms delay`);
+            console.log(`[Init] Found ${imgElements.length} img elements in DOM after 500ms delay`);
             if (imgElements.length > 0) {
+                let visibleCount = 0;
+                let loadedCount = 0;
+                
                 imgElements.forEach((img, idx) => {
                     const rect = img.getBoundingClientRect();
                     const computedStyle = window.getComputedStyle(img);
                     const isVisible = rect.width > 0 && rect.height > 0;
+                    const isLoaded = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+                    
+                    if (isVisible) visibleCount++;
+                    if (isLoaded) loadedCount++;
+                    
                     const display = computedStyle.display;
                     const visibility = computedStyle.visibility;
                     const opacity = computedStyle.opacity;
                     const zIndex = computedStyle.zIndex;
                     
-                    console.log(`[Init] Image ${idx}:`);
-                    console.log(`  src="${img.src.substring(0, 80)}..."`);
-                    console.log(`  dimensions=${rect.width}x${rect.height}`);
-                    console.log(`  display=${display}, visibility=${visibility}, opacity=${opacity}, z-index=${zIndex}`);
-                    console.log(`  visible=${isVisible}`);
-                    
-                    if (!isVisible) {
-                        console.error(`[Init] Image ${idx} is NOT visible!`);
-                        console.error(`  Parent container:`, img.parentElement?.className);
-                        const parentRect = img.parentElement?.getBoundingClientRect();
-                        if (parentRect) {
-                            console.error(`  Parent dimensions: ${parentRect.width}x${parentRect.height}`);
+                    if (!isVisible || !isLoaded) {
+                        console.warn(`[Init] Image ${idx} ISSUES:`);
+                        console.warn(`  src="${img.src.substring(0, 80)}..."`);
+                        console.warn(`  dimensions=${rect.width}x${rect.height}`);
+                        console.warn(`  natural=${img.naturalWidth}x${img.naturalHeight}`);
+                        console.warn(`  display=${display}, visibility=${visibility}, opacity=${opacity}, z-index=${zIndex}`);
+                        console.warn(`  complete=${img.complete}, visible=${isVisible}, loaded=${isLoaded}`);
+                        
+                        if (!isVisible) {
+                            console.error(`[Init] Image ${idx} is NOT visible!`);
+                            console.error(`  Parent container:`, img.parentElement?.className);
+                            const parentRect = img.parentElement?.getBoundingClientRect();
+                            if (parentRect) {
+                                console.error(`  Parent dimensions: ${parentRect.width}x${parentRect.height}`);
+                            }
                         }
                     }
-                    
-                    // Force image to load and check for errors
-                    img.onerror = () => {
-                        console.error(`[Init] Image ${idx} failed to load: ${img.src}`);
-                    };
-                    img.onload = () => {
-                        console.log(`[Init] Image ${idx} loaded successfully: ${img.naturalWidth}x${img.naturalHeight}`);
-                    };
                 });
+                
+                console.log(`[Init] Image summary: ${loadedCount}/${imgElements.length} loaded, ${visibleCount}/${imgElements.length} visible`);
             } else {
                 console.error('[Init] ERROR: No img elements found in DOM after delay!');
                 console.log('[Init] HTML content sample:', this.htmlContentDiv.innerHTML.substring(0, 1000));
@@ -490,7 +581,7 @@ export class ScrollingContentDiv {
                 const allElements = this.htmlContentDiv.querySelectorAll('*');
                 console.log(`[Init] Total elements in htmlContentDiv: ${allElements.length}`);
             }
-        }, 500); // Increased delay to 500ms to ensure DOM is fully ready
+        }, 1000); // Increased delay to 1000ms to ensure DOM and images are fully ready
 
         this.wrapperDiv.appendChild(this.htmlContentDiv);
         
@@ -508,8 +599,10 @@ export class ScrollingContentDiv {
             
             // Force all images to load immediately (change lazy loading to eager)
             // Since content is duplicated and positioned, we want all images to load
+            // If this is a single window, be extra aggressive about loading
             const imgElements = this.htmlContentDiv.querySelectorAll('img');
-            console.log(`[Init] Found ${imgElements.length} images, forcing them to load...`);
+            const singleWindowNote = this.isSingleWindow ? ' [SINGLE WINDOW - aggressive loading]' : '';
+            console.log(`[Init] Found ${imgElements.length} images, forcing them to load...${singleWindowNote}`);
             imgElements.forEach((img, idx) => {
                 // Change lazy loading to eager for all images
                 if (img.loading === 'lazy') {
@@ -532,26 +625,99 @@ export class ScrollingContentDiv {
                     console.log(`[Init] Image ${idx} already loaded: ${img.naturalWidth}x${img.naturalHeight}`);
                 }
                 
-                // Ensure image is visible
+                // Ensure image is visible - force all visibility properties
                 img.style.display = 'block';
                 img.style.visibility = 'visible';
                 img.style.opacity = '1';
+                img.style.position = 'relative';
+                img.style.zIndex = '3';
+                
+                // Ensure loading is set to eager
+                img.loading = 'eager';
+                
+                // Force image to load by setting src again if needed
+                // If single window, be more aggressive with reloading
+                if (!img.complete && img.src) {
+                    const originalSrc = img.src;
+                    const delay = this.isSingleWindow ? 0 : 10; // No delay for single window
+                    setTimeout(() => {
+                        img.src = ''; // Clear src
+                        img.src = originalSrc; // Reset src to trigger load
+                        if (this.isSingleWindow) {
+                            // For single window, also try loading via Image object
+                            const preloadImg = new Image();
+                            preloadImg.onload = () => {
+                                if (!img.complete) {
+                                    img.src = originalSrc; // Force reload if still not complete
+                                }
+                            };
+                            preloadImg.src = originalSrc;
+                        }
+                    }, delay);
+                } else if (!img.complete) {
+                    // If image has no src, log error
+                    console.error(`[Init] Image ${idx} has no src attribute!`);
+                }
+                
+                // Log image state for debugging
+                setTimeout(() => {
+                    const rect = img.getBoundingClientRect();
+                    const computedStyle = window.getComputedStyle(img);
+                    const isVisible = rect.width > 0 && rect.height > 0;
+                    const isLoaded = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+                    
+                    if (!isVisible || !isLoaded) {
+                        console.warn(`[Init] Image ${idx} final state (ISSUES):`, {
+                            src: img.src ? img.src.substring(0, 60) + '...' : 'NO SRC',
+                            complete: img.complete,
+                            naturalWidth: img.naturalWidth,
+                            naturalHeight: img.naturalHeight,
+                            display: computedStyle.display,
+                            visibility: computedStyle.visibility,
+                            opacity: computedStyle.opacity,
+                            zIndex: computedStyle.zIndex,
+                            rect: `${rect.width}x${rect.height} at (${rect.left}, ${rect.top})`,
+                            visible: isVisible,
+                            loaded: isLoaded
+                        });
+                    }
+                }, 200);
             });
-        }, 300); // Increased delay to ensure DOM and styles are fully applied
+        }, 800); // Increased delay to ensure DOM and styles are fully applied
 
         document.body.appendChild(this.wrapperDiv);
 
         window.addEventListener('resize', (event) => this.handle_window_resize_event(event));
         
-        // Track mouse position for delta-y calculation
+        // Mouse drag handlers for drag-to-scroll functionality
+        // Listen for mousedown on image containers and cards within htmlContentDiv
+        this.htmlContentDiv.addEventListener('mousedown', (event) => {
+            this.handle_mouse_down(event);
+        }, { passive: false });
+        
+        // Track mouse position for delta-y calculation and drag handling
         document.addEventListener('mousemove', (event) => {
-            this.handle_mouse_move(event);
-            // Start animation loop when mouse moves (if not already running)
-            if (this.animation_frame_id === null && this.is_window_focused) {
-                this.startAnimationLoop();
+            if (this.is_dragging) {
+                this.handle_drag_move(event);
+            } else {
+                this.handle_mouse_move(event);
+                // Start animation loop when mouse moves (if not already running)
+                if (this.animation_frame_id === null && this.is_window_focused) {
+                    this.startAnimationLoop();
+                }
             }
         });
+        
+        // Handle mouseup to end drag
+        document.addEventListener('mouseup', (event) => {
+            this.handle_mouse_up(event);
+        });
+        
+        // Handle mouseleave to end drag if mouse leaves window
         document.addEventListener('mouseleave', () => {
+            if (this.is_dragging) {
+                this.end_drag();
+            }
             this.mouse_y_position = null;
             this.mouse_over_image_container = null;
             this.mouse_relative_position = null;
@@ -666,6 +832,15 @@ export class ScrollingContentDiv {
         }
         
         const updatePosition = () => {
+            // If dragging, skip velocity-based scrolling (drag handles position directly)
+            if (this.is_dragging) {
+                // Continue animation loop during drag to update background parallax
+                if (this.is_window_focused) {
+                    this.animation_frame_id = requestAnimationFrame(updatePosition);
+                }
+                return;
+            }
+            
             // Recalculate bounding rect to get current position
             const current_rect = this.htmlContentDiv.getBoundingClientRect();
             const current_content_height = current_rect.height;
@@ -894,11 +1069,29 @@ export class ScrollingContentDiv {
                 console.error('[Sanitize] ERROR: DOMPurify stripped all img tags!');
                 console.log('[Sanitize] Original HTML sample:', html_content.substring(0, 1000));
                 console.log('[Sanitize] Sanitized HTML sample:', sanitized_html_content.substring(0, 1000));
+                // Try to return original if sanitization failed
+                console.warn('[Sanitize] WARNING: Returning original HTML due to sanitization failure');
+                return html_content;
             } else if (imgCount === 0) {
                 console.warn('[Sanitize] WARNING: No img tags found in sanitized content!');
                 console.log('[Sanitize] Sample of sanitized content:', sanitized_html_content.substring(0, 500));
             } else if (imgCount < originalImgCount) {
                 console.warn(`[Sanitize] WARNING: Some img tags were removed (${originalImgCount} -> ${imgCount})`);
+            }
+            
+            // Verify images have src attributes after sanitization
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = sanitized_html_content;
+            const tempImages = tempDiv.querySelectorAll('img');
+            let imagesWithoutSrc = 0;
+            tempImages.forEach((img, idx) => {
+                if (!img.src || img.src === '' || img.getAttribute('src') === '') {
+                    imagesWithoutSrc++;
+                    console.error(`[Sanitize] Image ${idx} missing src attribute after sanitization`);
+                }
+            });
+            if (imagesWithoutSrc > 0) {
+                console.error(`[Sanitize] ERROR: ${imagesWithoutSrc} images missing src attribute after sanitization!`);
             }
             
             return sanitized_html_content;
@@ -954,6 +1147,121 @@ export class ScrollingContentDiv {
         if (this.verbose) console.log(`imageSlots: ${numImgSlots} htmlDivs: ${numHtmlDivs} at line_number: ${line_number}`);
     }
 
+    /**
+     * Handle mouse down event to start drag-to-scroll
+     * When user clicks on an image container, we'll track that pixel and keep it under the mouse
+     */
+    handle_mouse_down(event) {
+        if (!this.htmlContentDiv) return;
+        
+        // Don't start drag if clicking on buttons or interactive elements
+        if (event.target.closest('button, a, input, select, textarea')) {
+            return;
+        }
+        
+        // Check if click is on an image-container or image-card
+        const target = event.target.closest('.image-container, .image-card');
+        if (!target) return; // Only drag on image containers/cards
+        
+        // Prevent default to avoid text selection
+        event.preventDefault();
+        event.stopPropagation();
+        
+        // Start drag
+        this.is_dragging = true;
+        this.drag_start_mouse_y = event.clientY;
+        this.drag_start_translate_y = this.last_translate_y || 0;
+        this.drag_target_element = target;
+        
+        // Change cursor to indicate dragging
+        document.body.style.cursor = 'grabbing';
+        this.htmlContentDiv.style.cursor = 'grabbing';
+        
+        // Stop velocity scrolling during drag
+        this.scroll_velocity = 0;
+        
+        console.log(`[Drag] Started at mouseY=${this.drag_start_mouse_y}, translateY=${this.drag_start_translate_y}`);
+    }
+    
+    /**
+     * Handle mouse move during drag - update scroll position to keep clicked pixel under mouse
+     */
+    handle_drag_move(event) {
+        if (!this.is_dragging || !this.htmlContentDiv) return;
+        
+        event.preventDefault();
+        
+        const current_mouse_y = event.clientY;
+        const mouse_delta_y = current_mouse_y - this.drag_start_mouse_y;
+        
+        // Calculate new translateY: move container by the same amount mouse moved
+        // This keeps the clicked pixel under the mouse cursor
+        let new_translate_y = this.drag_start_translate_y + mouse_delta_y;
+        
+        // Apply wrapping logic for continuous scrolling
+        const current_rect = this.htmlContentDiv.getBoundingClientRect();
+        const current_content_height = current_rect.height;
+        const single_content_height = current_content_height / 3;
+        
+        const wrap_threshold_top = -single_content_height * 2 + 20;
+        const wrap_threshold_bottom = 0 - 20;
+        
+        let is_wrapping = false;
+        if (new_translate_y <= wrap_threshold_top) {
+            const overshoot = wrap_threshold_top - new_translate_y;
+            new_translate_y = wrap_threshold_bottom - overshoot;
+            is_wrapping = true;
+        } else if (new_translate_y >= wrap_threshold_bottom) {
+            const overshoot = new_translate_y - wrap_threshold_bottom;
+            new_translate_y = wrap_threshold_top + overshoot;
+            is_wrapping = true;
+        }
+        
+        // Update background parallax (scroll at 10% speed)
+        const content_delta = new_translate_y - (this.last_translate_y || 0);
+        const background_delta = content_delta * this.backgroundScrollFactor;
+        this.transformImgSlots(background_delta);
+        this.transformHtmlDivs();
+        
+        // Apply the new position
+        this.htmlContentDiv.style.transform = `translateY(${new_translate_y}px)`;
+        this.htmlContentDiv.style.transition = 'none';
+        this.last_translate_y = new_translate_y;
+        
+        // Log drag position (throttled)
+        if (!this.drag_log_frame_count) this.drag_log_frame_count = 0;
+        this.drag_log_frame_count++;
+        if (this.drag_log_frame_count % 10 === 0) { // Log every 10 frames during drag
+            console.log(`[Drag] mouseY=${current_mouse_y}, deltaY=${mouse_delta_y.toFixed(2)}, translateY=${new_translate_y.toFixed(2)}`);
+        }
+    }
+    
+    /**
+     * Handle mouse up event to end drag
+     */
+    handle_mouse_up(event) {
+        if (this.is_dragging) {
+            this.end_drag();
+        }
+    }
+    
+    /**
+     * End drag operation and restore normal cursor
+     */
+    end_drag() {
+        this.is_dragging = false;
+        this.drag_start_mouse_y = null;
+        this.drag_start_translate_y = null;
+        this.drag_target_element = null;
+        this.drag_log_frame_count = 0;
+        
+        // Restore cursor
+        document.body.style.cursor = '';
+        this.htmlContentDiv.style.cursor = '';
+        
+        console.log('[Drag] Ended');
+    }
+    
     /**
      * Handle mouse move event to calculate velocity increment based on mouse position relative to htmlContentDiv edges
      * Mouse at top edge → negative velocity acceleration

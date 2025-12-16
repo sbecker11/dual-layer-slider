@@ -75,6 +75,11 @@
                 box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.5) !important;
                 display: block !important;
                 z-index: 1 !important; /* Ensure cards are above background */
+                cursor: grab !important; /* Show grab cursor to indicate draggable */
+            }
+            
+            .dashboard__item .image-card:active {
+                cursor: grabbing !important; /* Show grabbing cursor when dragging */
             }
             
             .dashboard__item .image-card.marked-keep {
@@ -106,6 +111,11 @@
                 justify-content: center !important;
                 visibility: visible !important;
                 opacity: 1 !important;
+                cursor: grab !important; /* Show grab cursor to indicate draggable */
+            }
+            
+            .image-container:active {
+                cursor: grabbing !important; /* Show grabbing cursor when dragging */
             }
 
             .image-container img {
@@ -392,7 +402,7 @@
                     <div class="dashboard__item" data-path="outputs/campaigns/summer_2024_20251115_103730/products/beach_towel/1x1/beach_towel_1x1.png" data-timestamp="20251115_103730" data-product="beach_towel" data-campaign="summer_2024_20251115_103730">
                         <div class="image-card" id="card-0">
                             <div class="image-container">
-                                <img src="http://localhost:3000/outputs/campaigns/summer_2024_20251115_103730/products/beach_towel/1x1/beach_towel_1x1.png" alt="beach_towel" loading="lazy">
+                                <img src="http://localhost:3000/outputs/campaigns/summer_2024_20251115_103730/products/beach_towel/1x1/beach_towel_1x1.png" alt="beach_towel" loading="eager">
                             </div>
                             <div class="image-info">
                                 <div class="text-fields">
@@ -410,7 +420,7 @@
                     <div class="dashboard__item" data-path="outputs/campaigns/summer_2024_20251115_103730/products/sunscreen_spf50/1x1/sunscreen_spf50_1x1.png" data-timestamp="20251115_103730" data-product="sunscreen_spf50" data-campaign="summer_2024_20251115_103730">
                         <div class="image-card" id="card-1">
                             <div class="image-container">
-                                <img src="http://localhost:3000/outputs/campaigns/summer_2024_20251115_103730/products/sunscreen_spf50/1x1/sunscreen_spf50_1x1.png" alt="sunscreen_spf50" loading="lazy">
+                                <img src="http://localhost:3000/outputs/campaigns/summer_2024_20251115_103730/products/sunscreen_spf50/1x1/sunscreen_spf50_1x1.png" alt="sunscreen_spf50" loading="eager">
                             </div>
                             <div class="image-info">
                                 <div class="text-fields">
@@ -428,7 +438,7 @@
                     <div class="dashboard__item" data-path="outputs/campaigns/summer_2024_20251115_103841/products/beach_towel/1x1/beach_towel_1x1.png" data-timestamp="20251115_103841" data-product="beach_towel" data-campaign="summer_2024_20251115_103841">
                         <div class="image-card" id="card-2">
                             <div class="image-container">
-                                <img src="http://localhost:3000/outputs/campaigns/summer_2024_20251115_103841/products/beach_towel/1x1/beach_towel_1x1.png" alt="beach_towel" loading="lazy">
+                                <img src="http://localhost:3000/outputs/campaigns/summer_2024_20251115_103841/products/beach_towel/1x1/beach_towel_1x1.png" alt="beach_towel" loading="eager">
                             </div>
                             <div class="image-info">
                                 <div class="text-fields">
@@ -446,7 +456,7 @@
                     <div class="dashboard__item" data-path="outputs/campaigns/summer_2024_20251115_103841/products/sunscreen_spf50/1x1/sunscreen_spf50_1x1.png" data-timestamp="20251115_103841" data-product="sunscreen_spf50" data-campaign="summer_2024_20251115_103841">
                         <div class="image-card" id="card-3">
                             <div class="image-container">
-                                <img src="http://localhost:3000/outputs/campaigns/summer_2024_20251115_103841/products/sunscreen_spf50/1x1/sunscreen_spf50_1x1.png" alt="sunscreen_spf50" loading="lazy">
+                                <img src="http://localhost:3000/outputs/campaigns/summer_2024_20251115_103841/products/sunscreen_spf50/1x1/sunscreen_spf50_1x1.png" alt="sunscreen_spf50" loading="eager">
                             </div>
                             <div class="image-info">
                                 <div class="text-fields">
