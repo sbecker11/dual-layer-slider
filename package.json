@@ -1,12 +1,33 @@
 {
   "name": "dual-layer-slider",
-  "version": "1.0.0",
-  "description": "A project for a dual-layer slider with scrolling content.",
-  "main": "server/server.js",
+  "version": "2.0.0",
+  "description": "A reusable package for creating parallax scrolling interfaces with background and foreground layers",
+  "type": "module",
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./ScrollingContentDiv": "./src/ScrollingContentDiv.mjs"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node server/server.js",
     "dev": "nodemon server/server.js"
   },
+  "keywords": [
+    "slider",
+    "parallax",
+    "scrolling",
+    "dual-layer",
+    "background",
+    "foreground",
+    "animation"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
   "dependencies": {
     "dompurify": "^3.2.4",
     "express": "^4.21.2",
@@ -15,6 +36,9 @@
   "devDependencies": {
     "nodemon": "^3.1.9"
   },
-  "author": "Your Name",
-  "license": "MIT"
+  "peerDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sbecker11/dual-layer-slider.git"
+  }
 }

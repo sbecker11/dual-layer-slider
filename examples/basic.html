@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual-Layer Slider - Basic Example</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+        }
+        
+        #scrolling-container {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="scrolling-container"></div>
+    
+    <script type="module">
+        import { initDualLayerSlider } from '../src/index.mjs';
+        
+        // Example HTML content
+        const htmlContent = `
+            <div style="padding: 20px; color: white;">
+                <h1>Item 1</h1>
+                <p>This is the first content item</p>
+            </div>
+            <div style="padding: 20px; color: white;">
+                <h1>Item 2</h1>
+                <p>This is the second content item</p>
+            </div>
+            <div style="padding: 20px; color: white;">
+                <h1>Item 3</h1>
+                <p>This is the third content item</p>
+            </div>
+        `;
+        
+        // Initialize the slider
+        initDualLayerSlider({
+            htmlContent: htmlContent,
+            backgroundImageUrls: [
+                // Replace with actual image URLs
+                'https://via.placeholder.com/800x600/333333/ffffff?text=Background+1',
+                'https://via.placeholder.com/800x600/666666/ffffff?text=Background+2'
+            ],
+            contentScrollFactor: 2.0,
+            backgroundScrollFactor: 0.1,
+            maxVelocityPerSecond: 400,
+            verbose: true
+        }).then(slider => {
+            console.log('Slider initialized:', slider);
+        }).catch(error => {
+            console.error('Failed to initialize slider:', error);
+        });
+    </script>
+</body>
+</html>
+
