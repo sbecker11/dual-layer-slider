@@ -3,9 +3,9 @@ import DOMPurify from './purify.es.mjs';
 export class ScrollingContentDiv {
     static async create(htmlContentUrl, backgroundImageUrls) {
         const instance = new ScrollingContentDiv(htmlContentUrl, backgroundImageUrls);
-        const initializedInstance = await instance.initialize();
+        await instance.initialize();
         // this is added to the DOM from index.html
-        return initializedInstance;
+        return instance;
     }
 
     constructor(htmlContentUrl, backgroundImageUrls) {
@@ -20,9 +20,24 @@ export class ScrollingContentDiv {
         this.backgroundHtmlDivs = []; // Array to hold multiple background htmlDivs
         this.contentScrollFactor = 2.0;
         this.backgroundScrollFactor = 0.1;
-        this.verbose = true;
+        this.verbose = false; // Disable verbose logging
         this.current_velocity = 0;
         this.last_delta = 0;
+        this.absolute_scroll_top = 0; // Track absolute scroll position
+        this.last_translate_y = null; // Track last translateY to calculate scroll delta
+        this.scroll_top_min = null; // Minimum scrollTop limit (null = no limit)
+        this.scroll_top_max = null; // Maximum scrollTop limit (null = no limit)
+        this.animation_frame_id = null; // Track animation frame for cancellation
+        this.is_window_focused = true; // Track window focus state
+        this.campaign_square_height = null; // Height of a single campaign square item
+        this.last_logged_images = null; // Track last logged images to avoid duplicate logs
+        this.mouse_y_position = null; // Track mouse Y position
+        this.scroll_velocity = 0; // Accumulated scroll velocity (pixels per second)
+        this.max_velocity_per_second = 400; // Maximum velocity in pixels per second (positive or negative)
+        this.max_velocity_per_frame = null; // Will be set based on container height to prevent flickering
+        this.velocity_acceleration_rate = 50; // Velocity increment rate (pixels per second per second) - reduced to prevent oscillation
+        this.velocity_damping_rate = 0.9; // Damping factor to slow down velocity when mouse is at center
+        this.last_frame_time = null; // Track time for per-second calculations
     }
 
     async initializeImageSlots() {
@@ -42,9 +57,9 @@ export class ScrollingContentDiv {
         if ( numImages === 0 ) {
             throw new Error('numImages is 0');
         }
-        console.log("numImages:", numImages);
+        if (this.verbose) console.log("numImages:", numImages);
         const windowHeight = window.innerHeight;
-        console.log("windowHeight:", windowHeight);
+        if (this.verbose) console.log("windowHeight:", windowHeight);
         
         while ( top < (windowHeight * 2)) {
             let imageIndex = slotIndex % numImages;
@@ -60,10 +75,10 @@ export class ScrollingContentDiv {
                 btm: top + imageHeight,
                 visible: true // will be set to false when the imgSlot is not visible
             });
-            console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top);
+            if (this.verbose) console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top);
             slotIndex += 1;
             top += imageHeight;
-            console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top);
+            if (this.verbose) console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top);
         }
         // initialize this.imageSlots 
         let numImgSlots = this.imageSlots.length;
@@ -255,7 +270,7 @@ export class ScrollingContentDiv {
 
         // load the HTML content from contentUrl
         const contentUrl = this.validate_url_string(this.htmlContentUrl);
-        console.log('Attempting to fetch html from:', contentUrl);
+        if (this.verbose) console.log('Attempting to fetch html from:', contentUrl);
     
         const contentResponse = await fetch(contentUrl);
         if (!contentResponse.ok) {
@@ -312,8 +327,10 @@ export class ScrollingContentDiv {
                 throw error;
             }
         } // all this.backgroundImageObjects loaded and initialized
-        for ( let backgroundImageObject of this.backgroundImageObjects) {
-            console.log('**** backgroundImageObject:', backgroundImageObject);
+        if (this.verbose) {
+            for ( let backgroundImageObject of this.backgroundImageObjects) {
+                console.log('**** backgroundImageObject:', backgroundImageObject);
+            }
         }
 
         // The first call to create and set up this.imageSlots using this.backgroundImageObjects
@@ -338,15 +355,79 @@ export class ScrollingContentDiv {
         if ( sanitized_html_content.length === 0 ) {
             throw new Error('Failed to sanitize HTML content');
         }
-        this.htmlContentDiv.innerHTML = sanitized_html_content;
+        
+        // Create continuous loop by duplicating content multiple times
+        // We'll create 3 copies: original, copy above, copy below for seamless looping
+        const contentCopy = sanitized_html_content;
+        this.htmlContentDiv.innerHTML = contentCopy + contentCopy + contentCopy;
 // deepcode ignore DOMXSS: because it's been sanitized using DOMPurify
 
         this.wrapperDiv.appendChild(this.htmlContentDiv);
+        
+        // Set initial position to the middle copy (second copy) so we can scroll in both directions
+        // Wait for content to be measured, then position it
+        setTimeout(() => {
+            const contentHeight = this.htmlContentDiv.getBoundingClientRect().height;
+            const singleContentHeight = contentHeight / 3;
+            // Position at the start of the middle copy (one content height down)
+            const initialPosition = -singleContentHeight;
+            this.htmlContentDiv.style.transform = `translateY(${initialPosition}px)`;
+            this.htmlContentDiv.style.transition = 'none'; // No transition for initial positioning
+            this.last_translate_y = initialPosition;
+            this.last_frame_time = performance.now(); // Initialize frame time tracking
+        }, 100);
 
         document.body.appendChild(this.wrapperDiv);
 
         window.addEventListener('resize', (event) => this.handle_window_resize_event(event));
-
+        
+        // Track mouse position for delta-y calculation
+        document.addEventListener('mousemove', (event) => {
+            this.handle_mouse_move(event);
+            // Start animation loop when mouse moves (if not already running)
+            if (this.animation_frame_id === null && this.is_window_focused) {
+                this.startAnimationLoop();
+            }
+        });
+        document.addEventListener('mouseleave', () => {
+            this.mouse_y_position = null;
+            this.mouse_over_image_container = null;
+            this.mouse_relative_position = null;
+        });
+        
+        // Pause animation when window loses focus
+        window.addEventListener('blur', () => {
+            this.is_window_focused = false;
+            // Stop any ongoing animation
+            if (this.animation_frame_id !== null) {
+                cancelAnimationFrame(this.animation_frame_id);
+                this.animation_frame_id = null;
+            }
+            // Stop velocity immediately
+            this.current_velocity = 0;
+        });
+        
+        // Resume animation when window gains focus
+        window.addEventListener('focus', () => {
+            this.is_window_focused = true;
+        });
+        
+        // Also pause when page becomes hidden (tab switch, etc.)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.is_window_focused = false;
+                if (this.animation_frame_id !== null) {
+                    cancelAnimationFrame(this.animation_frame_id);
+                    this.animation_frame_id = null;
+                }
+                this.current_velocity = 0;
+            } else {
+                this.is_window_focused = true;
+            }
+        });
+        
+        // Return the instance for method chaining
+        return this;
     } // end of class initizalization
 
     handle_window_resize_event(event) {
@@ -359,6 +440,24 @@ export class ScrollingContentDiv {
         this.initializeBackgroundHtmlDivs();
     }
 
+    /**
+     * Set scrollTop limits
+     * @param {number|null} min - Minimum scrollTop value (null = no minimum)
+     * @param {number|null} max - Maximum scrollTop value (null = no maximum)
+     */
+    setScrollTopLimits(min, max) {
+        this.scroll_top_min = min;
+        this.scroll_top_max = max;
+        
+        // Clamp current scrollTop to new limits
+        if (this.scroll_top_min !== null && this.absolute_scroll_top < this.scroll_top_min) {
+            this.absolute_scroll_top = this.scroll_top_min;
+        }
+        if (this.scroll_top_max !== null && this.absolute_scroll_top > this.scroll_top_max) {
+            this.absolute_scroll_top = this.scroll_top_max;
+        }
+    }
+
     // updateBoundaries() {
     //     const contentHeight = this.htmlContentDiv.getBoundingClientRect().height;
     //     return {
@@ -369,88 +468,179 @@ export class ScrollingContentDiv {
 
     handle_wrapper_scroll_event(event) {
         event.preventDefault();
-    
-        // Update the current velocity based on the scroll event
-        this.current_velocity += event.deltaY * 0.1; // Smaller step for velocity updates
-    
-        const bounding_client_rect = this.htmlContentDiv.getBoundingClientRect();
-        const content_height = bounding_client_rect.height;
-        const padding = content_height / 2;
-        const parent = this.htmlContentDiv.parentNode;
-        if (parent !== this.wrapperDiv) {
-            throw new Error('htmlContentDiv is not a child of wrapperDiv');
+        // Mouse-based scrolling is now primary, scroll events are ignored
+        // Start animation loop if not already running
+        if (this.animation_frame_id === null) {
+            this.startAnimationLoop();
         }
+    }
     
-        // Clamp the velocity
-        const max_velocity = content_height / 10;
-        const min_velocity = -max_velocity;
-        this.current_velocity = Math.max(min_velocity, Math.min(max_velocity, this.current_velocity));
-    
-        // Dampen the velocity over time
-        const damping_factor = 0.95; // Higher damping factor for smoother scrolling
-        this.current_velocity *= damping_factor;
-    
-        // If the scroll is too small, ignore it
-        if (Math.abs(this.current_velocity) < 0.01) {
-            this.current_velocity = 0;
-            return;
+    startAnimationLoop() {
+        // Calculate campaign square height if not already calculated
+        if (this.campaign_square_height === null && this.htmlContentDiv) {
+            const firstItem = this.htmlContentDiv.querySelector('.dashboard__item');
+            if (firstItem) {
+                this.campaign_square_height = firstItem.getBoundingClientRect().height;
+                console.log('Campaign square height:', this.campaign_square_height, 'px');
+            }
         }
-
-        this.transformImgSlots(this.current_velocity/10);
-        this.transformHtmlDivs();
-    
-        const new_delta = this.current_velocity;
-    
-        if (this.verbose) {
-            let info = [];
-            info.push(`crt_veloc: ${this.current_velocity.toFixed(3)}`);
-            info.push(`new_delta: ${new_delta.toFixed(3)}`);
-            info.push(`max_veloc: ${max_velocity.toFixed(3)}`);
-            info.push(`evt.delta: ${event.deltaY.toFixed(3)}`);
-            console.log(info.join('\n'));
+        
+        // Initialize translateY tracking if needed
+        if (this.last_translate_y === null && this.htmlContentDiv) {
+            const bounding_client_rect = this.htmlContentDiv.getBoundingClientRect();
+            this.last_translate_y = bounding_client_rect.top;
         }
-    
-        // Use requestAnimationFrame for smoother updates
+        
         const updatePosition = () => {
-            const current_top = bounding_client_rect.top;
-            const window_height = window.innerHeight;
+            // Recalculate bounding rect to get current position
+            const current_rect = this.htmlContentDiv.getBoundingClientRect();
+            const current_content_height = current_rect.height;
     
-            // Pre-translate the htmlContentDiv
-            let new_top = current_top + new_delta;
-            let new_btm = new_top + content_height;
+            // For continuous loop: calculate the single content height (since we duplicated it 3 times)
+            const single_content_height = current_content_height / 3;
+            
+            // Calculate velocity acceleration based on mouse position relative to htmlContentDiv edges
+            const current_time = performance.now();
+            let delta_time = 0;
+            if (this.last_frame_time !== null) {
+                delta_time = (current_time - this.last_frame_time) / 1000; // Convert to seconds
+            }
+            this.last_frame_time = current_time;
+            
+            // Clamp delta_time to prevent large jumps (e.g., if tab was inactive)
+            // Use a reasonable maximum delta_time (e.g., 1/30 second = ~33ms for 30fps)
+            const MAX_DELTA_TIME = 1/30; // Maximum 33ms between frames
+            if (delta_time > MAX_DELTA_TIME) {
+                delta_time = MAX_DELTA_TIME;
+            }
+            
+            if (delta_time > 0 && this.htmlContentDiv) {
+                const contentRect = this.htmlContentDiv.getBoundingClientRect();
+                const contentTop = contentRect.top;
+                const contentHeight = contentRect.height;
+                
+                if (this.mouse_y_position !== null && contentHeight > 0) {
+                    // Calculate mouse position relative to container viewport (0 = top edge, 1 = bottom edge, 0.5 = center)
+                    // Use viewport-relative position to avoid issues with scrolling container
+                    const viewportTop = 0;
+                    const viewportBottom = window.innerHeight;
+                    const viewportHeight = viewportBottom - viewportTop;
+                    
+                    // Calculate mouse position relative to viewport (0 = top, 1 = bottom, 0.5 = center)
+                    const mouseRelativeY = (this.mouse_y_position - viewportTop) / viewportHeight;
+                    
+                    // Calculate target velocity based on mouse position
+                    // Top edge (0) → -max_velocity, bottom edge (1) → +max_velocity, center (0.5) → 0
+                    const normalizedPosition = (mouseRelativeY - 0.5) * 2; // Maps 0.5→0, 0→-1, 1→+1
+                    const targetVelocity = normalizedPosition * this.max_velocity_per_second;
+                    
+                    // Accelerate velocity toward target velocity smoothly
+                    const velocityDifference = targetVelocity - this.scroll_velocity;
+                    const acceleration = velocityDifference * this.velocity_acceleration_rate * delta_time;
+                    
+                    // Increment velocity (act as accelerator)
+                    this.scroll_velocity += acceleration;
+                    
+                    // Clamp velocity to max values
+                    this.scroll_velocity = Math.max(-this.max_velocity_per_second, 
+                                                    Math.min(this.max_velocity_per_second, this.scroll_velocity));
+                    
+                    // Apply damping when mouse is near center (dampen toward zero)
+                    const distanceFromCenter = Math.abs(mouseRelativeY - 0.5);
+                    const centerThreshold = 0.1; // 10% from center
+                    if (distanceFromCenter < centerThreshold) {
+                        // Dampen velocity toward zero
+                        this.scroll_velocity *= Math.pow(this.velocity_damping_rate, delta_time * 60); // Scale by 60 for per-second damping
+                    }
+                } else {
+                    // No mouse position, apply damping to slow down
+                    this.scroll_velocity *= Math.pow(this.velocity_damping_rate, delta_time * 60);
+                }
+            }
+            
+            // Calculate frame delta based on velocity and time elapsed
+            let frame_delta = 0;
+            if (delta_time > 0) {
+                const velocity_per_frame = this.scroll_velocity * delta_time; // Pixels per second * seconds = pixels
+                
+                // Hard limit: abs(current_velocity converted to frame delta) should never exceed 20px per animation frame
+                const MAX_DELTA_PER_FRAME = 40; // Absolute maximum pixels per frame (increased from 20)
+                
+                // Clamp frame delta to never exceed 20px per frame
+                frame_delta = Math.max(-MAX_DELTA_PER_FRAME, 
+                                      Math.min(MAX_DELTA_PER_FRAME, velocity_per_frame));
+            }
+            
+            // Log current velocity to browser console
+            console.log('Current velocity:', this.scroll_velocity.toFixed(2), 'px/s');
+            
+            // Accumulate position instead of resetting to zero
+            // Calculate new position based on last position plus delta
+            let new_top = (this.last_translate_y || 0) + frame_delta;
+            let is_wrapping = false;
     
-            // New top has gone past the bottom edge, so instantaneously go to the top
-            if (new_top > window_height + padding) {
-                parent.removeChild(this.htmlContentDiv);
-                new_top = -content_height;
-                this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
-                parent.appendChild(this.htmlContentDiv);
+            // Continuous loop wrapping: wrap when we exceed boundaries
+            // We have 3 copies: copy1 (top), copy2 (middle), copy3 (bottom)
+            // translateY ranges: copy1 [-2h to -h], copy2 [-h to 0], copy3 [0 to h]
+            // We start at -h (top of copy2, middle)
+            // Wrap earlier (20px before boundaries) to prevent translateY from exceeding safe bounds
+            const wrap_threshold_top = -single_content_height * 2 + 20; // Wrap 20px before bottom of copy1
+            const wrap_threshold_bottom = 0 - 20; // Wrap 20px before top of copy3
+            
+            if (new_top <= wrap_threshold_top) {
+                // Scrolled too far up, wrap to copy3 (bottom)
+                // Calculate how far past threshold we went
+                const overshoot = wrap_threshold_top - new_top;
+                new_top = wrap_threshold_bottom - overshoot; // Continue from bottom threshold
+                is_wrapping = true;
+            } else if (new_top >= wrap_threshold_bottom) {
+                // Scrolled too far down, wrap to copy1 (top)
+                // Calculate how far past threshold we went
+                const overshoot = new_top - wrap_threshold_bottom;
+                new_top = wrap_threshold_top + overshoot; // Continue from top threshold
+                is_wrapping = true;
             }
-            // New bottom has gone past the top edge, so instantaneously go to the bottom
-            else if (new_btm < -padding) {
-                parent.removeChild(this.htmlContentDiv);
-                new_top = window_height;
-                this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
-                parent.appendChild(this.htmlContentDiv);
+            
+            // Update background images based on frame_delta
+            this.transformImgSlots(frame_delta / 10);
+            this.transformHtmlDivs();
+            
+            // Apply the transform without CSS transition for consistent frame-by-frame updates
+            // CSS transitions can cause jumps when combined with rapid frame updates
+            this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
+            this.htmlContentDiv.style.transition = 'none'; // No transition - we handle smoothness via frame delta limits
+            
+            // Update last_translate_y after applying transform (for next frame, it will be reset to 0)
+            this.last_translate_y = new_top;
+            
+            // Log visible image filenames
+            this.logVisibleImages();
+            
+            // Log y-translate value when it changes (threshold: 1px to reduce noise)
+            if (this.last_logged_scroll_top === null || Math.abs(new_top - this.last_logged_scroll_top) > 1) {
+                console.log('y-translate:', new_top.toFixed(2), 'px');
+                this.last_logged_scroll_top = new_top;
             }
-            else {
-                // Apply the transform with smoothed transition
-                this.htmlContentDiv.style.transform = `translateY(${new_top}px)`;
-                const initial_delay = 0;
-                const distance = Math.abs(new_delta);
-                const duration = distance / 1000; // Assuming 1000 pixels per second
-                this.htmlContentDiv.style.transition = `transform ${duration}s ease-out ${initial_delay}s`;
+            
+            // Additional verbose logging if enabled
+            if (this.verbose) {
+                console.log('translateY:', new_top.toFixed(2), 'px | scrollTop:', this.absolute_scroll_top.toFixed(2), 'px');
             }
     
-            // Continue updating the position if the velocity is still significant
-            if (Math.abs(this.current_velocity) >= 0.01) {
-                requestAnimationFrame(updatePosition);
+            // Continue animation loop if window is focused
+            // Keep running as long as mouse might be over an image container
+            if (this.is_window_focused) {
+                this.animation_frame_id = requestAnimationFrame(updatePosition);
+            } else {
+                this.animation_frame_id = null;
             }
         };
-    
-        // Start the position update
-        requestAnimationFrame(updatePosition);
-    } // end of handle_wrapper_scroll_event
+        
+        // Start the animation loop
+        if (this.is_window_focused) {
+            this.animation_frame_id = requestAnimationFrame(updatePosition);
+        }
+    } // end of startAnimationLoop
 
     // Function to get image dimension from a URL string
     // example usage:
@@ -539,7 +729,64 @@ export class ScrollingContentDiv {
         if ( numImgSlots !== numHtmlDivs ) {
             throw  new Error(`Mismatch between image slots and HTML divs: numImgSlots:${numImgSlots} != numHtmlDivs:${numHtmlDivs}. Image slots: ${JSON.stringify(this.imageSlots)}, HTML divs: ${JSON.stringify(this.backgroundHtmlDivs)} at line_number: ${line_number}`);
         }
-        console.log(`imageSlots: ${numImgSlots} htmlDivs: ${numHtmlDivs} at line_number: ${line_number}`);
+        if (this.verbose) console.log(`imageSlots: ${numImgSlots} htmlDivs: ${numHtmlDivs} at line_number: ${line_number}`);
+    }
+
+    /**
+     * Handle mouse move event to calculate velocity increment based on mouse position relative to htmlContentDiv edges
+     * Mouse at top edge → negative velocity acceleration
+     * Mouse at bottom edge → positive velocity acceleration
+     * Mouse at center → velocity dampens toward zero
+     */
+    handle_mouse_move(event) {
+        if (!this.htmlContentDiv) return;
+        
+        const mouseY = event.clientY;
+        this.mouse_y_position = mouseY;
+    }
+
+    /**
+     * Log filenames of images that are currently visible children of the scrolling container
+     */
+    logVisibleImages() {
+        if (!this.htmlContentDiv) return;
+        
+        const viewportTop = 0;
+        const viewportBottom = window.innerHeight;
+        
+        // Get all image elements within the scrolling container
+        const images = this.htmlContentDiv.querySelectorAll('img');
+        const visibleImages = [];
+        
+        images.forEach(img => {
+            const rect = img.getBoundingClientRect();
+            // Check if image is visible in viewport (at least partially)
+            if (rect.bottom >= viewportTop && rect.top <= viewportBottom) {
+                // Extract filename from src or alt attribute
+                const src = img.src || img.getAttribute('src') || '';
+                const alt = img.alt || '';
+                
+                // Extract filename from path
+                let filename = '';
+                if (src) {
+                    const urlParts = src.split('/');
+                    filename = urlParts[urlParts.length - 1] || '';
+                } else if (alt) {
+                    filename = alt;
+                }
+                
+                if (filename) {
+                    visibleImages.push(filename);
+                }
+            }
+        });
+        
+        // Only log if the list of visible images has changed
+        const imagesKey = visibleImages.sort().join(',');
+        if (this.last_logged_images !== imagesKey) {
+            console.log('Visible images:', visibleImages);
+            this.last_logged_images = imagesKey;
+        }
     }
 
 
