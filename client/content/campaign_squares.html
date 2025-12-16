@@ -6,12 +6,13 @@
         <title>Campaign 1x1 Images - Keep/Delete</title>
         <style>
             /* Override external stylesheet */
+            /* Make containers transparent to show parallax background layer */
             html, body {
-                background-color: #ffffff !important;
+                background-color: transparent !important;
             }
             
             :root {
-                --bg-color: #ffffff !important;
+                --bg-color: transparent !important;
             }
             
             .admin {
@@ -23,7 +24,7 @@
                 grid-template-rows: 1fr;
                 grid-template-columns: 1fr;
                 grid-template-areas: "main";
-                background-color: white !important;
+                background-color: transparent !important;
             }
 
             .admin__main {
@@ -36,7 +37,7 @@
                 grid-template-columns: repeat(var(--column-count), 1fr);
                 grid-gap: var(--spacing);
                 margin: 0;
-                background-color: white !important;
+                background-color: transparent !important;
             }
 
             @media screen and (min-width: 48rem) {
@@ -51,7 +52,7 @@
                 width: 100% !important;
                 box-sizing: border-box !important;
                 min-width: 0 !important;
-                background: #ffffff !important;
+                background: transparent !important; /* Transparent to show parallax background */
                 overflow: visible !important;
                 border: 2px solid green !important;
             }
@@ -66,13 +67,14 @@
                 color: #000000 !important;
                 border: 4px solid #ff0000 !important;
                 border-radius: 8px !important;
-                overflow: visible !important;
+                overflow: visible !important; /* Allow image-container overflow to be visible */
                 width: calc(100% - 4px) !important;
                 box-sizing: border-box !important;
                 transition: transform 0.2s, border-color 0.2s !important;
                 margin: 2px !important;
                 box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.5) !important;
                 display: block !important;
+                z-index: 1 !important; /* Ensure cards are above background */
             }
             
             .dashboard__item .image-card.marked-keep {
@@ -92,19 +94,29 @@
             .image-container {
                 position: relative;
                 width: 100%;
-                padding-top: 100%; /* 1:1 aspect ratio */
+                height: 300px !important; /* Fixed height to ensure images are visible */
+                min-height: 300px !important;
+                padding-top: 0 !important; /* Remove padding-top trick, use fixed height instead */
                 background: #ffffff;
                 overflow: hidden;
                 border-radius: 5px 5px 0 0;
+                z-index: 2 !important; /* Ensure image container is above card background */
+                display: flex !important; /* Use flexbox for better image centering */
+                align-items: center !important;
+                justify-content: center !important;
             }
 
             .image-container img {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                object-fit: contain;
+                position: relative !important; /* Changed from absolute to relative for flexbox centering */
+                max-width: 100% !important;
+                max-height: 100% !important;
+                width: auto !important;
+                height: auto !important;
+                object-fit: contain !important;
+                z-index: 3 !important; /* Ensure images are on top */
+                display: block !important; /* Ensure image is displayed */
+                visibility: visible !important; /* Ensure image is visible */
+                opacity: 1 !important; /* Ensure image is fully opaque */
             }
 
             .image-info {
@@ -211,13 +223,13 @@
         </style>
         <style>
             /* Force override all external styles - highest priority */
-            /* Override html/body background from external stylesheet */
+            /* Keep containers transparent to show parallax background layer */
             html, body {
-                background-color: #ffffff !important;
+                background-color: transparent !important;
             }
             
             :root {
-                --bg-color: #ffffff !important;
+                --bg-color: transparent !important;
             }
             
             #html-content-div .dashboard__item .image-card {

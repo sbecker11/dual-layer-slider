@@ -16,16 +16,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         console.log('Loading content from:', htmlContentUrl);
         
-        // Override CSS variable and html/body background from external stylesheet
+        // Keep backgrounds transparent to show parallax background layer
         // Inject a style element into the head with highest priority
         const overrideStyle = document.createElement('style');
-        overrideStyle.textContent = ':root { --bg-color: #ffffff !important; } html, body { background-color: #ffffff !important; }';
+        overrideStyle.textContent = ':root { --bg-color: transparent !important; } html, body { background-color: transparent !important; }';
         document.head.appendChild(overrideStyle);
         
         // Also set inline styles as backup
-        document.documentElement.style.setProperty('--bg-color', '#ffffff');
-        document.body.style.backgroundColor = '#ffffff';
-        document.documentElement.style.backgroundColor = '#ffffff';
+        document.documentElement.style.setProperty('--bg-color', 'transparent');
+        document.body.style.backgroundColor = 'transparent';
+        document.documentElement.style.backgroundColor = 'transparent';
         
         const contentDiv = await ScrollingContentDiv.create( htmlContentUrl, backgroundImageUrls );
         console.log('ScrollingContentDiv created successfully');

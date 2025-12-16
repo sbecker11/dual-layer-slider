@@ -24,7 +24,7 @@ html, body {
   overflow: hidden;
   height: 100vh;
   width: 100vw;
-  background-color: var(--bg-color);
+  background-color: transparent; /* Transparent to show parallax background layer */
 }
 
 .admin {
@@ -37,7 +37,7 @@ html, body {
   grid-template-rows: 1fr;
   grid-template-columns: 1fr;
   grid-template-areas: "main";
-  background-color: var(--bg-color);
+  background-color: transparent; /* Transparent to show parallax background layer */
 }
 
 .admin__main {
@@ -56,7 +56,7 @@ html, body {
   grid-template-columns: repeat(var(--column-count), 1fr);
   grid-gap: var(--spacing);
   margin: 0; /* Remove negative margin */
-  background-color: var(--bg-color);
+  background-color: transparent; /* Transparent to show parallax background layer */
 }
 
 .dashboard__item {
@@ -85,7 +85,7 @@ html, body {
   height: 200px;
   flex-basis: 100%;
   grid-column: 1 / -1;
-  background-color: var(--bg-color);
+  background-color: transparent; /* Transparent to show parallax background layer */
   border: 1px solid black;
 }
             
@@ -135,7 +135,8 @@ svg.viewBox {
   right: 0;
   bottom: 0;
   overflow: hidden;
-  background-color: var(--bg-color);
+  background-color: transparent; /* Transparent to show parallax background layer */
+  z-index: 0; /* Base layer */
 }
 
 #html-content-div {
@@ -148,5 +149,6 @@ svg.viewBox {
   padding: 0px;
   box-sizing: border-box;
   transition: transform 0.2s cubic-bezier(0.33, 1, 0.68, 1);
-  background-color: var(--bg-color);
+  background-color: transparent; /* Make transparent to show background layer */
+  z-index: 0; /* Ensure content is above background (z-index: -1) */
 }

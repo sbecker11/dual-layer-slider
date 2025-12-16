@@ -38,6 +38,7 @@ export class ScrollingContentDiv {
         this.velocity_acceleration_rate = 50; // Velocity increment rate (pixels per second per second) - reduced to prevent oscillation
         this.velocity_damping_rate = 0.9; // Damping factor to slow down velocity when mouse is at center
         this.last_frame_time = null; // Track time for per-second calculations
+        this.frame_count = 0; // Frame counter for logging
     }
 
     async initializeImageSlots() {
@@ -49,10 +50,7 @@ export class ScrollingContentDiv {
         // This function sets the initial top values for all imageSlots required to 
         // create the effect of viewing an infinitely scrolling list of non-overlapping 
         // alternating background images over the current window.innerHeight.
-        let top = 0;
-        let slotIndex = 0;
-        this.imageSlots = [];
-
+        
         const numImages = this.backgroundImageObjects.length;
         if ( numImages === 0 ) {
             throw new Error('numImages is 0');
@@ -61,7 +59,27 @@ export class ScrollingContentDiv {
         const windowHeight = window.innerHeight;
         if (this.verbose) console.log("windowHeight:", windowHeight);
         
-        while ( top < (windowHeight * 2)) {
+        // Start with negative offset to ensure we have images above the viewport
+        // This ensures coverage from the very top (y=0) of the viewport
+        let slotIndex = 0;
+        this.imageSlots = [];
+        
+        // Calculate total height of one complete cycle of all images
+        let totalCycleHeight = 0;
+        for (let i = 0; i < numImages; i++) {
+            totalCycleHeight += this.backgroundImageObjects[i].height;
+        }
+        
+        // Start positioning from negative offset to ensure coverage well above viewport
+        // We need image slots starting well before y=0 to prevent gaps
+        // Start with a negative offset equal to at least one full cycle of images
+        let startOffset = -totalCycleHeight;
+        let top = startOffset;
+        
+        // Create enough image slots to cover well above and below viewport
+        // Cover from -totalCycleHeight to windowHeight * 2 + totalCycleHeight
+        const targetBottom = windowHeight * 2 + totalCycleHeight;
+        while ( top < targetBottom) {
             let imageIndex = slotIndex % numImages;
             let backgroundImageObject = this.backgroundImageObjects[imageIndex];
             let imageHeight = backgroundImageObject.height;
@@ -75,11 +93,69 @@ export class ScrollingContentDiv {
                 btm: top + imageHeight,
                 visible: true // will be set to false when the imgSlot is not visible
             });
-            if (this.verbose) console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top);
+            if (this.verbose) console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top, " btm:", top + imageHeight);
             slotIndex += 1;
             top += imageHeight;
-            if (this.verbose) console.log("slotIndex:", slotIndex, " imageHeight:", imageHeight, " top:", top);
         }
+        
+        // Ensure we have at least one image slot that starts well before y=0
+        // Add more slots going backwards if needed to ensure no gaps
+        if (this.imageSlots.length > 0 && this.imageSlots[0].top > -totalCycleHeight) {
+            // Add slots before the first one to ensure coverage well above viewport
+            let currentTop = this.imageSlots[0].top;
+            let prependSlotIndex = -1;
+            // Add at least one full cycle above, plus buffer
+            const minTop = -totalCycleHeight * 2;
+            while (currentTop > minTop) {
+                let imageIndex = (prependSlotIndex % numImages + numImages) % numImages;
+                let backgroundImageObject = this.backgroundImageObjects[imageIndex];
+                let imageHeight = backgroundImageObject.height;
+                let imageUrl = backgroundImageObject.url;
+                currentTop -= imageHeight;
+                this.imageSlots.unshift({
+                    slotIndex: prependSlotIndex,
+                    imageIndex: imageIndex,
+                    imageHeight: imageHeight,
+                    imageUrl: imageUrl,
+                    top: currentTop,
+                    btm: currentTop + imageHeight,
+                    visible: true
+                });
+                prependSlotIndex -= 1;
+                if (this.verbose) console.log("Prepended slot at top:", currentTop, " btm:", currentTop + imageHeight);
+            }
+            // Renumber slot indices
+            this.imageSlots.forEach((slot, idx) => {
+                slot.slotIndex = idx;
+            });
+        }
+        
+        // Also ensure we have enough slots below the viewport
+        if (this.imageSlots.length > 0) {
+            const lastSlot = this.imageSlots[this.imageSlots.length - 1];
+            const targetBottom = windowHeight * 2 + totalCycleHeight;
+            let currentTop = lastSlot.btm;
+            let appendSlotIndex = this.imageSlots.length;
+            while (currentTop < targetBottom) {
+                let imageIndex = appendSlotIndex % numImages;
+                let backgroundImageObject = this.backgroundImageObjects[imageIndex];
+                let imageHeight = backgroundImageObject.height;
+                let imageUrl = backgroundImageObject.url;
+                this.imageSlots.push({
+                    slotIndex: appendSlotIndex,
+                    imageIndex: imageIndex,
+                    imageHeight: imageHeight,
+                    imageUrl: imageUrl,
+                    top: currentTop,
+                    btm: currentTop + imageHeight,
+                    visible: true
+                });
+                if (this.verbose) console.log("Appended slot at top:", currentTop, " btm:", currentTop + imageHeight);
+                appendSlotIndex += 1;
+                currentTop += imageHeight;
+            }
+        }
+        
         // initialize this.imageSlots 
         let numImgSlots = this.imageSlots.length;
         if ( numImgSlots < 2 ) {
@@ -130,9 +206,9 @@ export class ScrollingContentDiv {
             backgroundHtmlDiv.style.left = 0;
             backgroundHtmlDiv.style.width = '100%';
             backgroundHtmlDiv.style.backgroundImage = `url(${imageSlot.imageUrl})`; 
-            backgroundHtmlDiv.style.backgroundRepeat = 'repeat';
-            backgroundHtmlDiv.style.backgroundSize = 'auto';
-            backgroundHtmlDiv.style.backgroundPosition = '0 0';
+            backgroundHtmlDiv.style.backgroundRepeat = 'repeat-y'; // Repeat vertically only
+            backgroundHtmlDiv.style.backgroundSize = '100% auto'; // Full width, maintain aspect ratio
+            backgroundHtmlDiv.style.backgroundPosition = 'center top'; // Center horizontally, align to top
             backgroundHtmlDiv.style.backgroundColor = 'transparent';
             backgroundHtmlDiv.style.zIndex = -1;
             backgroundHtmlDiv.style.pointerEvents = 'none';
@@ -189,31 +265,32 @@ export class ScrollingContentDiv {
         // set its new imgSlot.top to after prevImgSlot.btm,
         // and then show it again.
         for ( let imgSlot of this.imageSlots) {
-            if ( imgSlot.top < 0 ) {
-                let prevImgSlot = this.imageSlots[(imgSlot.slotIndex - 1 + this.imageSlots.length) % this.imageSlots.length];
-                imgSlot.top = prevImgSlot.btm;
-                imgSlot.btm = imgSlot.top + imgSlot.imageHeight;
-                imgSlot.visible = false;
-            }
+            // Check if image slot is completely above the viewport (btm < 0)
             if (imgSlot.btm < 0) {
                 let prevImgSlot = this.imageSlots[(imgSlot.slotIndex - 1 + this.imageSlots.length) % this.imageSlots.length];
                 imgSlot.top = prevImgSlot.btm;
                 imgSlot.btm = imgSlot.top + imgSlot.imageHeight;
                 imgSlot.visible = false;
             }
-            // imgSlot has scrolled off the bottom edge of the browser window 
-            // so caller will hide it, 
-            // move imgSlot.btm to before nextImgSlot.top, 
-            // and then show it again.
+            // Check if image slot is completely below the viewport (top > window.innerHeight)
             else if (imgSlot.top > window.innerHeight) {
                 let nextImgSlot = this.imageSlots[(imgSlot.slotIndex + 1 + this.imageSlots.length) % this.imageSlots.length];
                 imgSlot.btm = nextImgSlot.top;
                 imgSlot.top = imgSlot.btm - imgSlot.imageHeight;
                 imgSlot.visible = false;
             }
-            // otherwise, imgSlot is visible
-            else {
+            // Image slot overlaps with viewport (at least partially visible)
+            // Visible if: top < window.innerHeight AND btm > 0
+            else if (imgSlot.top < window.innerHeight && imgSlot.btm > 0) {
                 imgSlot.visible = true;
+            }
+            // Edge case: image slot starts above viewport but extends into it (top < 0 but btm > 0)
+            else if (imgSlot.top < 0 && imgSlot.btm > 0) {
+                imgSlot.visible = true;
+            }
+            // Otherwise, mark as not visible (shouldn't happen, but safety check)
+            else {
+                imgSlot.visible = false;
             }
         }
     } // end of transformImgSlots
@@ -356,11 +433,37 @@ export class ScrollingContentDiv {
             throw new Error('Failed to sanitize HTML content');
         }
         
+        // Debug: Check image count in sanitized content before duplication
+        const imgCountBeforeDup = (sanitized_html_content.match(/<img/g) || []).length;
+        console.log(`[Init] Sanitized content has ${imgCountBeforeDup} img tags before duplication`);
+        
         // Create continuous loop by duplicating content multiple times
         // We'll create 3 copies: original, copy above, copy below for seamless looping
         const contentCopy = sanitized_html_content;
         this.htmlContentDiv.innerHTML = contentCopy + contentCopy + contentCopy;
 // deepcode ignore DOMXSS: because it's been sanitized using DOMPurify
+
+        // Debug: Log image count after insertion - check immediately and after a delay
+        const imgElementsImmediate = this.htmlContentDiv.querySelectorAll('img');
+        console.log(`[Init] Found ${imgElementsImmediate.length} img elements in DOM immediately after insertion (expected: ${imgCountBeforeDup * 3})`);
+        
+        setTimeout(() => {
+            const imgElements = this.htmlContentDiv.querySelectorAll('img');
+            console.log(`[Init] Found ${imgElements.length} img elements in DOM after 100ms delay`);
+            if (imgElements.length > 0) {
+                imgElements.forEach((img, idx) => {
+                    const rect = img.getBoundingClientRect();
+                    const isVisible = rect.width > 0 && rect.height > 0;
+                    console.log(`[Init] Image ${idx}: src="${img.src.substring(0, 80)}...", dimensions=${rect.width}x${rect.height}, visible=${isVisible}`);
+                    if (!isVisible) {
+                        console.warn(`[Init] Image ${idx} is not visible! Check CSS and z-index.`);
+                    }
+                });
+            } else {
+                console.error('[Init] ERROR: No img elements found in DOM after delay!');
+                console.log('[Init] HTML content sample:', this.htmlContentDiv.innerHTML.substring(0, 1000));
+            }
+        }, 100);
 
         this.wrapperDiv.appendChild(this.htmlContentDiv);
         
@@ -420,10 +523,22 @@ export class ScrollingContentDiv {
                     cancelAnimationFrame(this.animation_frame_id);
                     this.animation_frame_id = null;
                 }
+                this.scroll_velocity = 0;
                 this.current_velocity = 0;
             } else {
                 this.is_window_focused = true;
             }
+        });
+        
+        // Clean up when page is unloading (window closing)
+        window.addEventListener('beforeunload', () => {
+            this.is_window_focused = false;
+            if (this.animation_frame_id !== null) {
+                cancelAnimationFrame(this.animation_frame_id);
+                this.animation_frame_id = null;
+            }
+            this.scroll_velocity = 0;
+            this.current_velocity = 0;
         });
         
         // Return the instance for method chaining
@@ -571,8 +686,12 @@ export class ScrollingContentDiv {
                                       Math.min(MAX_DELTA_PER_FRAME, velocity_per_frame));
             }
             
-            // Log current velocity to browser console
-            console.log('Current velocity:', this.scroll_velocity.toFixed(2), 'px/s');
+            // Log current velocity to browser console (every 60 frames to reduce spam)
+            if (!this.velocity_log_frame_count) this.velocity_log_frame_count = 0;
+            this.velocity_log_frame_count++;
+            if (this.velocity_log_frame_count % 60 === 0) {
+                console.log('Current velocity:', this.scroll_velocity.toFixed(2), 'px/s');
+            }
             
             // Accumulate position instead of resetting to zero
             // Calculate new position based on last position plus delta
@@ -601,9 +720,19 @@ export class ScrollingContentDiv {
                 is_wrapping = true;
             }
             
-            // Update background images based on frame_delta
-            this.transformImgSlots(frame_delta / 10);
+            // Update background images with parallax effect (dual-layer scrolling)
+            // Background scrolls at backgroundScrollFactor speed (0.1x) for parallax
+            // Content scrolls at contentScrollFactor speed (2.0x) - but we use frame_delta directly
+            const background_delta = frame_delta * this.backgroundScrollFactor;
+            this.transformImgSlots(background_delta);
             this.transformHtmlDivs();
+            
+            // Log dual-layer scrolling info (every 30 frames to reduce console spam)
+            if (!this.frame_count) this.frame_count = 0;
+            this.frame_count++;
+            if (this.frame_count % 30 === 0) {
+                console.log(`Dual-layer: Content delta=${frame_delta.toFixed(2)}px, Background delta=${background_delta.toFixed(2)}px (${(this.backgroundScrollFactor * 100).toFixed(0)}% speed)`);
+            }
             
             // Apply the transform without CSS transition for consistent frame-by-frame updates
             // CSS transitions can cause jumps when combined with rapid frame updates
@@ -677,8 +806,32 @@ export class ScrollingContentDiv {
      */
     getSanitizedHtmlContent(html_content) {
         // Use DOMPurify to sanitize the HTML content
+        // Configure DOMPurify to allow images and their attributes
         try {
-            const sanitized_html_content = DOMPurify.sanitize(html_content);
+            // Create a fresh DOMPurify config for each call to avoid any potential state issues
+            const config = {
+                ALLOWED_TAGS: ['div', 'img', 'span', 'p', 'button', 'strong', 'a', 'style', 'script', 'main', 'section', 'article', 'header', 'footer'],
+                ALLOWED_ATTR: ['class', 'id', 'src', 'alt', 'loading', 'data-path', 'data-timestamp', 'data-product', 'data-campaign', 'href', 'type', 'rel', 'width', 'height'],
+                ALLOW_DATA_ATTR: true,
+                KEEP_CONTENT: true,
+                RETURN_DOM: false, // Return string, not DOM
+                RETURN_DOM_FRAGMENT: false,
+                RETURN_TRUSTED_TYPE: false
+            };
+            
+            const sanitized_html_content = DOMPurify.sanitize(html_content, config);
+            
+            // Debug: Check if images are in sanitized content
+            const imgCount = (sanitized_html_content.match(/<img/g) || []).length;
+            if (this.verbose || imgCount === 0) {
+                console.log(`[Sanitize] Sanitized HTML contains ${imgCount} img tags`);
+                if (imgCount === 0) {
+                    console.warn('[Sanitize] WARNING: No img tags found in sanitized content!');
+                    // Log a sample of the sanitized content for debugging
+                    console.log('[Sanitize] Sample of sanitized content:', sanitized_html_content.substring(0, 500));
+                }
+            }
+            
             return sanitized_html_content;
         } catch (error) {
             console.error('Error sanitizing HTML content:', error);
