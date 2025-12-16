@@ -453,17 +453,44 @@ export class ScrollingContentDiv {
             if (imgElements.length > 0) {
                 imgElements.forEach((img, idx) => {
                     const rect = img.getBoundingClientRect();
+                    const computedStyle = window.getComputedStyle(img);
                     const isVisible = rect.width > 0 && rect.height > 0;
-                    console.log(`[Init] Image ${idx}: src="${img.src.substring(0, 80)}...", dimensions=${rect.width}x${rect.height}, visible=${isVisible}`);
+                    const display = computedStyle.display;
+                    const visibility = computedStyle.visibility;
+                    const opacity = computedStyle.opacity;
+                    const zIndex = computedStyle.zIndex;
+                    
+                    console.log(`[Init] Image ${idx}:`);
+                    console.log(`  src="${img.src.substring(0, 80)}..."`);
+                    console.log(`  dimensions=${rect.width}x${rect.height}`);
+                    console.log(`  display=${display}, visibility=${visibility}, opacity=${opacity}, z-index=${zIndex}`);
+                    console.log(`  visible=${isVisible}`);
+                    
                     if (!isVisible) {
-                        console.warn(`[Init] Image ${idx} is not visible! Check CSS and z-index.`);
+                        console.error(`[Init] Image ${idx} is NOT visible!`);
+                        console.error(`  Parent container:`, img.parentElement?.className);
+                        const parentRect = img.parentElement?.getBoundingClientRect();
+                        if (parentRect) {
+                            console.error(`  Parent dimensions: ${parentRect.width}x${parentRect.height}`);
+                        }
                     }
+                    
+                    // Force image to load and check for errors
+                    img.onerror = () => {
+                        console.error(`[Init] Image ${idx} failed to load: ${img.src}`);
+                    };
+                    img.onload = () => {
+                        console.log(`[Init] Image ${idx} loaded successfully: ${img.naturalWidth}x${img.naturalHeight}`);
+                    };
                 });
             } else {
                 console.error('[Init] ERROR: No img elements found in DOM after delay!');
                 console.log('[Init] HTML content sample:', this.htmlContentDiv.innerHTML.substring(0, 1000));
+                // Try to find why images aren't there
+                const allElements = this.htmlContentDiv.querySelectorAll('*');
+                console.log(`[Init] Total elements in htmlContentDiv: ${allElements.length}`);
             }
-        }, 100);
+        }, 500); // Increased delay to 500ms to ensure DOM is fully ready
 
         this.wrapperDiv.appendChild(this.htmlContentDiv);
         
@@ -478,7 +505,39 @@ export class ScrollingContentDiv {
             this.htmlContentDiv.style.transition = 'none'; // No transition for initial positioning
             this.last_translate_y = initialPosition;
             this.last_frame_time = performance.now(); // Initialize frame time tracking
-        }, 100);
+            
+            // Force all images to load immediately (change lazy loading to eager)
+            // Since content is duplicated and positioned, we want all images to load
+            const imgElements = this.htmlContentDiv.querySelectorAll('img');
+            console.log(`[Init] Found ${imgElements.length} images, forcing them to load...`);
+            imgElements.forEach((img, idx) => {
+                // Change lazy loading to eager for all images
+                if (img.loading === 'lazy') {
+                    img.loading = 'eager';
+                    console.log(`[Init] Changed image ${idx} from lazy to eager loading`);
+                }
+                
+                // Force image to load by triggering load event
+                if (!img.complete) {
+                    // Create a new image element to force load
+                    const newImg = new Image();
+                    newImg.onload = () => {
+                        console.log(`[Init] Image ${idx} preloaded successfully: ${newImg.naturalWidth}x${newImg.naturalHeight}`);
+                    };
+                    newImg.onerror = () => {
+                        console.error(`[Init] Image ${idx} failed to preload: ${img.src}`);
+                    };
+                    newImg.src = img.src;
+                } else {
+                    console.log(`[Init] Image ${idx} already loaded: ${img.naturalWidth}x${img.naturalHeight}`);
+                }
+                
+                // Ensure image is visible
+                img.style.display = 'block';
+                img.style.visibility = 'visible';
+                img.style.opacity = '1';
+            });
+        }, 300); // Increased delay to ensure DOM and styles are fully applied
 
         document.body.appendChild(this.wrapperDiv);
 
@@ -816,20 +875,30 @@ export class ScrollingContentDiv {
                 KEEP_CONTENT: true,
                 RETURN_DOM: false, // Return string, not DOM
                 RETURN_DOM_FRAGMENT: false,
-                RETURN_TRUSTED_TYPE: false
+                RETURN_TRUSTED_TYPE: false,
+                // Ensure images are preserved
+                ADD_ATTR: ['src', 'alt', 'loading'], // Explicitly allow these attributes
+                FORBID_TAGS: [], // Don't forbid any tags
+                FORBID_ATTR: [] // Don't forbid any attributes
             };
             
             const sanitized_html_content = DOMPurify.sanitize(html_content, config);
             
             // Debug: Check if images are in sanitized content
             const imgCount = (sanitized_html_content.match(/<img/g) || []).length;
-            if (this.verbose || imgCount === 0) {
-                console.log(`[Sanitize] Sanitized HTML contains ${imgCount} img tags`);
-                if (imgCount === 0) {
-                    console.warn('[Sanitize] WARNING: No img tags found in sanitized content!');
-                    // Log a sample of the sanitized content for debugging
-                    console.log('[Sanitize] Sample of sanitized content:', sanitized_html_content.substring(0, 500));
-                }
+            const originalImgCount = (html_content.match(/<img/g) || []).length;
+            
+            console.log(`[Sanitize] Original HTML has ${originalImgCount} img tags, sanitized has ${imgCount} img tags`);
+            
+            if (imgCount === 0 && originalImgCount > 0) {
+                console.error('[Sanitize] ERROR: DOMPurify stripped all img tags!');
+                console.log('[Sanitize] Original HTML sample:', html_content.substring(0, 1000));
+                console.log('[Sanitize] Sanitized HTML sample:', sanitized_html_content.substring(0, 1000));
+            } else if (imgCount === 0) {
+                console.warn('[Sanitize] WARNING: No img tags found in sanitized content!');
+                console.log('[Sanitize] Sample of sanitized content:', sanitized_html_content.substring(0, 500));
+            } else if (imgCount < originalImgCount) {
+                console.warn(`[Sanitize] WARNING: Some img tags were removed (${originalImgCount} -> ${imgCount})`);
             }
             
             return sanitized_html_content;

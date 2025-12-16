@@ -142,9 +142,9 @@ function checkBrowserLock() {
         const lockContent = fs.readFileSync(browserLockFile, 'utf8');
         const lockTime = parseInt(lockContent, 10);
         
-        // Lock expires after 30 seconds
+        // Lock expires after 10 seconds
         // This allows browser to reopen after closing all windows and restarting server
-        const lockExpiryTime = 30 * 1000; // 30 seconds
+        const lockExpiryTime = 10 * 1000; // 10 seconds (reduced from 30 for faster recovery)
         const now = Date.now();
         
         if (isNaN(lockTime) || (now - lockTime) > lockExpiryTime) {
